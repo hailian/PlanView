@@ -1,0 +1,42 @@
+# Build output
+out/
+build/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake.user
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+ipch/
+
+# Compiled object files
+*.smod
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Editor / OS
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
