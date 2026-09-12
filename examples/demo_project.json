@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "name": "泵站演示工程",
+  "nextId": 40,
+  "settings": {
+    "tcp": {
+      "host": "127.0.0.1",
+      "port": 9000,
+      "pollMs": 200
+    }
+  },
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "主画面",
+      "size": [1280, 800],
+      "background": "#1E1E2EFF",
+      "components": [
+        {
+          "id": "comp-1", "type": "Panel", "name": "监控面板",
+          "x": 20, "y": 16, "w": 1240, "h": 230, "z": 0,
+          "properties": { "title": "泵站监控" }
+        },
+        {
+          "id": "comp-2", "type": "Gauge", "name": "温度1",
+          "x": 60, "y": 56, "w": 170, "h": 170, "z": 1,
+          "properties": { "min": 0.0, "max": 35.0, "unit": " ℃", "majorTicks": 7 }
+        },
+        {
+          "id": "comp-3", "type": "Gauge", "name": "温度2",
+          "x": 250, "y": 56, "w": 170, "h": 170, "z": 2,
+          "properties": { "min": 0.0, "max": 40.0, "unit": " ℃", "majorTicks": 8 }
+        },
+        {
+          "id": "comp-4", "type": "Gauge", "name": "温度3",
+          "x": 440, "y": 56, "w": 170, "h": 170, "z": 3,
+          "properties": { "min": 0.0, "max": 45.0, "unit": " ℃", "majorTicks": 9 }
+        },
+        {
+          "id": "comp-5", "type": "Chart", "name": "液位趋势",
+          "x": 640, "y": 40, "w": 400, "h": 190, "z": 4,
+          "properties": { "min": 0.0, "max": 40.0, "spanSec": 120 }
+        },
+        {
+          "id": "comp-6", "type": "Label", "name": "计数",
+          "x": 1070, "y": 100, "w": 170, "h": 60, "z": 5,
+          "properties": { "text": "--", "fontSize": 30, "align": "居中" }
+        },
+        {
+          "id": "comp-7", "type": "Lamp", "name": "泵运行灯",
+          "x": 60, "y": 270, "w": 44, "h": 44, "z": 6,
+          "properties": {}
+        },
+        {
+          "id": "comp-8", "type": "Label", "name": "泵状态文字",
+          "x": 116, "y": 276, "w": 110, "h": 32, "z": 7,
+          "properties": { "text": "泵状态", "fontSize": 18, "align": "左" }
+        },
+        {
+          "id": "comp-9", "type": "Button", "name": "启动",
+          "x": 250, "y": 264, "w": 100, "h": 52, "z": 8,
+          "properties": { "text": "启动" }
+        },
+        {
+          "id": "comp-10", "type": "Button", "name": "停止",
+          "x": 370, "y": 264, "w": 100, "h": 52, "z": 9,
+          "properties": { "text": "停止" }
+        },
+        {
+          "id": "comp-12", "type": "Slider", "name": "液位设定",
+          "x": 640, "y": 280, "w": 220, "h": 30, "z": 10,
+          "properties": { "min": 0.0, "max": 40.0 }
+        },
+        {
+          "id": "comp-11", "type": "Button", "name": "去副画面",
+          "x": 1176, "y": 740, "w": 84, "h": 44, "z": 11,
+          "properties": { "text": "副画面" }
+        },
+        {
+          "id": "comp-13", "type": "Switch", "name": "强制模式",
+          "x": 920, "y": 276, "w": 70, "h": 36, "z": 12,
+          "properties": {}
+        },
+        {
+          "id": "comp-14", "type": "Label", "name": "强制模式文字",
+          "x": 1000, "y": 282, "w": 120, "h": 28, "z": 13,
+          "properties": { "text": "强制模式", "fontSize": 16, "align": "左" }
+        }
+      ]
+    },
+    {
+      "id": "page-2",
+      "name": "副画面",
+      "size": [1280, 800],
+      "background": "#1E242EFF",
+      "components": [
+        {
+          "id": "comp-20", "type": "Gauge", "name": "温度4",
+          "x": 60, "y": 60, "w": 170, "h": 170, "z": 0,
+          "properties": { "min": 0.0, "max": 50.0, "unit": " ℃" }
+        },
+        {
+          "id": "comp-21", "type": "Gauge", "name": "温度5",
+          "x": 250, "y": 60, "w": 170, "h": 170, "z": 1,
+          "properties": { "min": 0.0, "max": 55.0, "unit": " ℃" }
+        },
+        {
+          "id": "comp-22", "type": "Gauge", "name": "温度6",
+          "x": 440, "y": 60, "w": 170, "h": 170, "z": 2,
+          "properties": { "min": 0.0, "max": 60.0, "unit": " ℃" }
+        },
+        {
+          "id": "comp-23", "type": "Panel", "name": "副面板",
+          "x": 20, "y": 20, "w": 1240, "h": 400, "z": -1,
+          "properties": { "title": "趋势扩展（示例页面）" }
+        },
+        {
+          "id": "comp-24", "type": "Button", "name": "返回",
+          "x": 1176, "y": 740, "w": 84, "h": 44, "z": 3,
+          "properties": { "text": "返回" }
+        }
+      ]
+    }
+  ],
+  "tags": [
+    { "name": "Temp1", "type": "float32", "address": 0, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度1" },
+    { "name": "Temp2", "type": "float32", "address": 1, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度2" },
+    { "name": "Temp3", "type": "float32", "address": 2, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度3" },
+    { "name": "Temp4", "type": "float32", "address": 3, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度4" },
+    { "name": "Temp5", "type": "float32", "address": 4, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度5" },
+    { "name": "Temp6", "type": "float32", "address": 5, "scale": 1.0, "offset": 0.0, "comment": "正弦波温度6" },
+    { "name": "Level", "type": "float32", "address": 6, "scale": 1.0, "offset": 0.0, "comment": "罐液位(随机游走)" },
+    { "name": "PumpOn", "type": "bool", "address": 7, "scale": 1.0, "offset": 0.0, "comment": "泵运行" },
+    { "name": "Count", "type": "uint16", "address": 8, "scale": 1.0, "offset": 0.0, "comment": "计数器" }
+  ],
+  "associations": [
+    { "kind": "dataBinding", "id": "a-1", "component": "comp-2", "property": "value", "tag": "Temp1" },
+    { "kind": "dataBinding", "id": "a-2", "component": "comp-3", "property": "value", "tag": "Temp2" },
+    { "kind": "dataBinding", "id": "a-3", "component": "comp-4", "property": "value", "tag": "Temp3" },
+    { "kind": "dataBinding", "id": "a-4", "component": "comp-20", "property": "value", "tag": "Temp4" },
+    { "kind": "dataBinding", "id": "a-5", "component": "comp-21", "property": "value", "tag": "Temp5" },
+    { "kind": "dataBinding", "id": "a-6", "component": "comp-22", "property": "value", "tag": "Temp6" },
+    { "kind": "dataBinding", "id": "a-7", "component": "comp-5", "property": "value", "tag": "Level" },
+    { "kind": "dataBinding", "id": "a-8", "component": "comp-12", "property": "value", "tag": "Level" },
+    { "kind": "dataBinding", "id": "a-9", "component": "comp-6", "property": "text", "tag": "Count" },
+    { "kind": "dataBinding", "id": "a-10", "component": "comp-7", "property": "isOn", "tag": "PumpOn" },
+    { "kind": "dataBinding", "id": "a-11", "component": "comp-13", "property": "isOn", "tag": "PumpOn" },
+    {
+      "kind": "linkage", "id": "a-20", "source": "comp-9", "event": "click",
+      "action": "setTagValue", "target": "", "param": "PumpOn", "value": true
+    },
+    {
+      "kind": "linkage", "id": "a-21", "source": "comp-10", "event": "click",
+      "action": "setTagValue", "target": "", "param": "PumpOn", "value": false
+    },
+    {
+      "kind": "linkage", "id": "a-22", "source": "comp-11", "event": "click",
+      "action": "navigate", "target": "", "param": "page-2", "value": null
+    },
+    {
+      "kind": "linkage", "id": "a-23", "source": "comp-24", "event": "click",
+      "action": "navigate", "target": "", "param": "page-1", "value": null
+    },
+    {
+      "kind": "linkage", "id": "a-24", "source": "comp-7", "event": "valueChanged",
+      "target": "comp-8", "action": "setProperty", "param": "text", "value": "运行中"
+    },
+    {
+      "kind": "alarmRule", "id": "a-30", "tag": "Temp1", "comparator": ">", "threshold": 25.0,
+      "severity": "high", "style": "flash", "latching": true, "components": ["comp-2"]
+    },
+    {
+      "kind": "alarmRule", "id": "a-31", "tag": "Level", "comparator": ">=", "threshold": 35.0,
+      "severity": "critical", "style": "border", "latching": false, "components": ["comp-5", "comp-12"]
+    }
+  ]
+}

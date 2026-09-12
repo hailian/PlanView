@@ -1,0 +1,104 @@
+# SoftG — HMI 组态软件（逻辑规划 + 页面展示）
+
+Windows / C++20 / Dear ImGui 组态软件套件，分三部分：
+
+| 部分 | 目标 | 说明 |
+|---|---|---|
+| **softg_base** | 静态库 | 两款软件共用：组件模型 / 关联模型 / TCP 数据层 / JSON 序列化 / **共享组件渲染器** / 运行引擎 |
+| **LogicPlanner** | exe | 逻辑规划软件（设计器）：拖拽组件布局页面 → 编辑数据绑定/联动/告警 → 生成 `.json` 配置 |
+| **PageViewer** | exe | 页面展示软件（运行器）：打开配置 → 按配置渲染页面 → TCP 数据联动刷新 |
+
+核心设计：**组件绘制代码只存在于 base 的 ComponentRenderer 中**，设计器画布与运行器渲染调用同一函数——"所见即所得"由链接期保证。
+
+## 构建
+
+需要 Visual Studio 2022+（含 C++ 桌面开发与 CMake 组件）。两种方式：
+
+```bat
+:: 命令行（推荐）
+scripts\build.cmd x64-debug      :: 或 x64-release
+
+:: Visual Studio：文件→打开→CMake...，选择仓库根目录，选 x64-debug/x64-release 预设
+```
+
+依赖经 CMake FetchContent 自动拉取（默认 gitee 镜像，网络环境不同可用 `-D SOFTG_IMGUI_REPO=...` 覆盖）：
+- Dear ImGui `v1.92.9b-docking`（Win32 + DX11 后端）
+- nlohmann/json `v3.12.0`
+
+构建产物：`out/build/<preset>/src/planner/LogicPlanner.exe`、`out/build/<preset>/src/viewer/PageViewer.exe`。
+
+## 使用
+
+### 端到端演示
+
+```bat
+:: 1) 启动数据服务器模拟器（槽位 0-5 正弦波 / 6 随机游走 / 7 方波 / 8 计数器）
+python tools\tcp_sim.py 9000
+
+:: 2) 用运行器打开演示工程
+out\build\x64-debug\src\viewer\PageViewer.exe examples\demo_project.json
+```
+
+演示内容：仪表/曲线随模拟数据刷新；「启动/停止」按钮写回槽位 7（指示灯与开关同步）；温度 1 > 25 触发闪烁告警（顶部告警条可确认）；液位 ≥ 35 触发描边告警（非锁存，自动恢复）；「副画面」按钮页面跳转；滑块拖动写回槽位 6（模拟器控制台可见 WRITE）。
+
+### 设计器（LogicPlanner）
+
+- **组件面板** 拖到画布创建（双击添加到左上角）；画布滚轮缩放、中键平移、框选/Ctrl 多选、8 手柄缩放、网格吸附
+- **属性** 面板编辑选中组件的类型化属性 / 几何 / 层级
+- **标签库** 定义数据点（槽位索引 + 类型 + scale/offset）
+- **关联关系** 面板创建/编辑三类关联：数据绑定（组件属性←标签）、组件联动（事件→动作）、阈值告警
+- **校验** 面板扫描悬空引用；Ctrl+Z/Y 撤销重做，Ctrl+C/V/D 复制粘贴再制
+- 文件→保存/另存为 生成 `.json` 配置
+
+### 运行器（PageViewer）
+
+- 打开工程（或命令行参数直接指定，或欢迎界面"打开上次"）
+- 左键操作 Button/Switch/Slider（有绑定时自动写回服务器），右键任意组件看详情（绑定值/质量/告警）
+- 「连接设置」可覆盖工程内的 host/port/轮询间隔
+- 断线自动重连（1s 退避），标签显示 CommLost 灰态
+
+## TCP 数据协议 v1
+
+行文本（UTF-8，`\n` 结尾），可直接 `telnet`/`nc` 调试：
+
+```
+PING\n                                  -> PONG\n
+READ <n> <idx1> <idx2> ...\n            -> VALUES <n> <idx>:<type>:<value> ...\n
+WRITE <idx> <type> <value>\n            -> OK <idx>\n | ERR <message>\n
+type ∈ bool|int16|uint16|int32|uint32|float32
+无此槽位: VALUES 中该项为 idx:?:-
+```
+
+标签 = 槽位索引（0..65535）+ 类型；`工程值 = 原始值 * scale + offset`。
+写回：运行器把工程值换算回原始值后 WRITE。
+
+## 单元测试
+
+```bat
+scripts\build.cmd x64-debug softg_tests
+out\build\x64-debug\tests\softg_tests.exe
+```
+
+覆盖：模型 JSON 往返（字节级一致）/ 高版本拒载 / 协议黄金行 / 值文本化 / TCP 回环（含应答分片重组）/ 引擎语义（绑定刷新、联动级联与环截断、告警锁存确认、写回排队、数据质量）。
+
+## 目录结构
+
+```
+src/base/       共享库（model 数据模型 / serialize JSON / data TCP 数据层 /
+                render 共享渲染器 / runtime 运行引擎 / appshell Win32+DX11 引导 / log）
+src/planner/    设计器（PlannerApp / Document(undo) / PlannerContext / panels/*）
+src/viewer/     运行器（ViewerApp / PollWorker 后台轮询线程）
+tests/          SoftgTest 自研极简单测框架 + 各模块测试
+tools/          tcp_sim.py 数据服务器模拟器
+examples/       demo_project.json 演示工程
+```
+
+## 关联语义
+
+| 类型 | 含义 | 配置字段 |
+|---|---|---|
+| dataBinding | 组件属性 ← 标签实时值 | component / property / tag |
+| linkage | 源组件事件 → 目标动作（设置属性、页面跳转、显隐切换、写标签、脉冲高亮） | source / event / target / action / param / value |
+| alarmRule | 标签越限 → 组件视觉告警（闪烁/描边/变色，可锁存需确认） | tag / comparator / threshold / severity / style / latching / components |
+
+联动传播深度上限 8 层（环防护）；告警默认覆盖"绑定该标签的全部组件"，也可显式指定组件列表。

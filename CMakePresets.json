@@ -61,5 +61,24 @@
                 "CMAKE_PROJECT_TOP_LEVEL_INCLUDES": "$env{VSINSTALLDIR}Common7/IDE/CommonExtensions/Microsoft/CMake/cmake/Microsoft/SegmentHeap.cmake"
             }
         }
+    ],
+    "buildPresets": [
+        {
+            "name": "x64-debug",
+            "displayName": "x64 Debug Build",
+            "configurePreset": "x64-debug"
+        },
+        {
+            "name": "x64-release",
+            "displayName": "x64 Release Build",
+            "configurePreset": "x64-release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "x64-debug",
+            "displayName": "x64 Debug Test",
+            "configurePreset": "x64-debug"
+        }
     ]
 }

@@ -30,6 +30,9 @@ ipch/
 # Compiled object files
 *.smod
 
+# Debug symbols
+*.pdb
+
 # Precompiled headers
 *.gch
 *.pch
@@ -40,3 +43,10 @@ ipch/
 *~
 .DS_Store
 Thumbs.db
+
+# App runtime
+imgui.ini*
+LogicPlanner.ini*
+PageViewer.ini*
+PageViewer.recent
+tools/__pycache__/

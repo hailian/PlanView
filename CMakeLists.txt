@@ -1,21 +1,23 @@
-﻿# CMakeList.txt: 02_GeneralSoft 的 CMake 项目，在此处包括源代码并定义
-# 项目特定的逻辑。
-#
-cmake_minimum_required (VERSION 3.10)
+# SoftG — HMI 组态软件（LogicPlanner 设计器 + PageViewer 运行器 + softg_base 共享库）
+cmake_minimum_required(VERSION 3.20)
 
-# 如果支持，请为 MSVC 编译器启用热重载。
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
+project(SoftG VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(MSVC)
+    # 源码含中文注释/字符串，/utf-8 必需；/MP 并行编译
+    add_compile_options(/utf-8 /MP)
 endif()
 
-project ("02_GeneralSoft")
+include(cmake/Dependencies.cmake)
 
-# 将源代码添加到此项目的可执行文件。
-add_executable (02_GeneralSoft "02_GeneralSoft.cpp" "02_GeneralSoft.h")
+add_subdirectory(src/base)
+add_subdirectory(src/planner)
+add_subdirectory(src/viewer)
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET 02_GeneralSoft PROPERTY CXX_STANDARD 20)
-endif()
-
-# TODO: 如有需要，请添加测试并安装目标。
+enable_testing()
+add_subdirectory(tests)

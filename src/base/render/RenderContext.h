@@ -1,0 +1,90 @@
+// RenderContext — 组件绘制的上下文：模式(设计/运行)、时钟、告警态、数据提供方。
+// 设计器画布与运行器渲染共用同一 ComponentRenderer，本结构是两条数据分支的开关。
+#pragma once
+
+#include <chrono>
+#include <cstdint>
+#include <string_view>
+
+#include "base/model/Component.h"
+#include "base/model/Types.h"
+
+namespace softg {
+
+class RuntimeEngine;      // M6 实现（前向声明，运行模式注入）
+class TextureCache;
+
+// 屏幕空间矩形（imgui 1.92 起 ImRect 属内部头，此处自带最小实现）
+struct ScreenRect {
+    ImVec2 Min{0, 0}, Max{0, 0};
+    ScreenRect() = default;
+    ScreenRect(ImVec2 a, ImVec2 b) : Min(a), Max(b) {}
+    float width() const { return Max.x - Min.x; }
+    float height() const { return Max.y - Min.y; }
+    ImVec2 center() const { return ImVec2((Min.x + Max.x) * 0.5f, (Min.y + Max.y) * 0.5f); }
+};
+
+// 告警视觉状态（渲染只关心这两项）
+struct AlarmVisual {
+    AlarmSeverity severity = AlarmSeverity::Low;
+    AlarmStyle style = AlarmStyle::Flash;
+};
+
+// 组件属性的运行时解析源：运行模式由 RuntimeEngine 实现（绑定值优先于本地属性）。
+// 为空（设计模式/未连接）时渲染直接读组件本地属性。
+class IPropertyProvider {
+public:
+    virtual ~IPropertyProvider() = default;
+    virtual const PropertyValue* resolved(const ComponentId& id, std::string_view key) const = 0;
+};
+
+// 曲线历史数据源：运行模式由 RuntimeEngine 实现（按绑定 tag 的环形缓冲采样）。
+// 为空时（设计模式）渲染画合成正弦演示波。
+struct ChartPoint {
+    std::chrono::steady_clock::time_point t{};
+    float v = 0.0f;
+};
+class IChartSeriesSource {
+public:
+    virtual ~IChartSeriesSource() = default;
+    virtual void getSeries(const ComponentId& compId, std::vector<ChartPoint>& out) const = 0;
+};
+
+// 告警状态源：运行模式由 RuntimeEngine 实现。
+class IAlarmSource {
+public:
+    virtual ~IAlarmSource() = default;
+    virtual bool alarmOf(const ComponentId& id, AlarmVisual& out) const = 0;
+};
+
+struct RenderContext {
+    enum class Mode : uint8_t { Design, Runtime };
+
+    Mode mode = Mode::Design;
+    std::chrono::steady_clock::time_point now{};  // 闪烁相位/演示动画用
+
+    IPropertyProvider* properties = nullptr;  // Runtime: 引擎; Design: null
+    IChartSeriesSource* chartSeries = nullptr;
+    IAlarmSource* alarms = nullptr;
+    TextureCache* textures = nullptr;  // Image 组件用; 两 app 各自持有
+
+    // 0..1 方波闪烁相位（1Hz）
+    float flashPhase() const {
+        using namespace std::chrono;
+        constexpr auto period = duration_cast<steady_clock::duration>(milliseconds(500));
+        auto ticks = now.time_since_epoch().count();
+        auto half = period.count();
+        return (ticks / half) % 2 == 0 ? 1.0f : 0.15f;
+    }
+
+    // 解析组件属性：Runtime 有 provider 时绑定值优先
+    PropertyValue prop(const Component& c, std::string_view key,
+                       const PropertyValue& fallback) const {
+        if (properties) {
+            if (const PropertyValue* v = properties->resolved(c.id, key)) return *v;
+        }
+        return c.propOr(key, fallback);
+    }
+};
+
+} // namespace softg
