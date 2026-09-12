@@ -33,13 +33,22 @@ static int msgBox(const std::string& utf8Text, const std::string& utf8Title, UIN
 }
 
 PlannerApp::PlannerApp(AppShell& shell) : textures_(shell.device()) {
+    shell_ = &shell;
     ctx_.textures = &textures_;
     // 确保初始页面 id
     ctx_.currentPagePtr();
 }
 
 void PlannerApp::firstRunLayout(ImGuiID dockspaceId) {
-    if (layoutBuilt_ || ImGui::DockBuilderGetNode(dockspaceId) != nullptr) {
+    if (layoutBuilt_)
+        return;
+    // DockSpaceOverViewport 会预先创建空节点，GetNode!=nullptr 不能作为"已有布局"依据；
+    // 只有节点已挂窗口或存在分割（ini 恢复出的布局）时才跳过首次布局
+    ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspaceId);
+    bool hasLayout =
+        node && (!node->Windows.empty() || node->ChildNodes[0] != nullptr ||
+                 node->ChildNodes[1] != nullptr);
+    if (hasLayout) {
         layoutBuilt_ = true;
         return;
     }
@@ -66,6 +75,10 @@ void PlannerApp::firstRunLayout(ImGuiID dockspaceId) {
 }
 
 bool PlannerApp::frame() {
+    if (!viewInited_) { // ImGui 就绪后按系统 DPI 设置画布默认缩放
+        viewInited_ = true;
+        ctx_.view.zoom = shell_->dpiScale();
+    }
     ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
     firstRunLayout(dockspaceId);
 
@@ -186,8 +199,10 @@ void PlannerApp::mainMenu() {
 }
 
 void PlannerApp::toolbar() {
+    // 高度需含 WindowPadding 上下留白，否则按钮下半截被侧边栏窗口裁剪
+    float barH = ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
     if (!ImGui::BeginViewportSideBar("##toolbar", ImGui::GetMainViewport(), ImGuiDir_Up,
-                                     ImGui::GetFrameHeight(), ImGuiWindowFlags_NoDecoration)) {
+                                     barH, ImGuiWindowFlags_NoDecoration)) {
         ImGui::End();  // 不可见分支
         return;
     }
@@ -210,7 +225,7 @@ void PlannerApp::toolbar() {
     const char* grids[] = {"关闭", "4", "8", "16"};
     float values[] = {0.0f, 4.0f, 8.0f, 16.0f};
     int cur = ctx_.view.grid < 1.0f ? 0 : ctx_.view.grid == 4.0f ? 1 : ctx_.view.grid == 8.0f ? 2 : 3;
-    ImGui::SetNextItemWidth(70);
+    ImGui::SetNextItemWidth(70 * shell_->dpiScale());
     if (ImGui::BeginCombo("网格", grids[cur])) {
         for (int i = 0; i < 4; ++i)
             if (ImGui::Selectable(grids[i], i == cur))

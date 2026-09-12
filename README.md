@@ -25,6 +25,8 @@ scripts\build.cmd x64-debug      :: 或 x64-release
 - Dear ImGui `v1.92.9b-docking`（Win32 + DX11 后端）
 - nlohmann/json `v3.12.0`
 
+**DPI 缩放**：界面按显示器 DPI 自动缩放（字体/间距/窗口尺寸/画布默认缩放），跨不同缩放比例的显示器拖动时热切换；环境变量 `SOFTG_UI_SCALE`（如 `set SOFTG_UI_SCALE=1.5`）可强制指定缩放。
+
 构建产物：`out/build/<preset>/src/planner/LogicPlanner.exe`、`out/build/<preset>/src/viewer/PageViewer.exe`。
 
 ## 使用

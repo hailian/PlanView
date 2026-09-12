@@ -26,7 +26,9 @@ private:
 
     PlannerContext ctx_;
     TextureCache textures_;
+    AppShell* shell_ = nullptr;       // 用于读取 DPI 缩放
     bool layoutBuilt_ = false;
+    bool viewInited_ = false;         // 首帧按 DPI 设置画布默认缩放
     bool exit_ = false;
 };
 

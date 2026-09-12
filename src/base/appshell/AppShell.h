@@ -35,6 +35,10 @@ public:
     ID3D11Device* device() const { return device_; }
     ID3D11DeviceContext* deviceContext() const { return context_; }
 
+    // 系统 DPI 缩放（96dpi = 1.0）。窗口创建时确定，跨屏拖动随 WM_DPICHANGED 更新。
+    // 用于画布默认缩放等业务侧换算；ImGui 样式/字体的缩放由 AppShell 内部完成。
+    float dpiScale() const { return dpiScale_; }
+
 private:
     bool createWindow(const AppConfig& config);
     bool createDeviceD3D();
@@ -42,6 +46,7 @@ private:
     void cleanupRenderTarget();
     void cleanupDeviceD3D();
     void onResize(UINT w, UINT h);
+    void onDpiChanged(float newScale, LPARAM lParam);
 
     HWND hwnd_ = nullptr;
     ID3D11Device* device_ = nullptr;
@@ -49,6 +54,7 @@ private:
     IDXGISwapChain* swapChain_ = nullptr;
     ID3D11RenderTargetView* rtv_ = nullptr;
     UINT width_ = 0, height_ = 0;
+    float dpiScale_ = 1.0f;
 
     static LRESULT WINAPI wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 };

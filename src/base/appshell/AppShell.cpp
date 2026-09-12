@@ -4,11 +4,15 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "base/appshell/FontSetup.h"
+#include "base/appshell/Theme.h"
 #include "base/log/Log.h"
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 // ImGui Win32 后端的消息处理入口（后端内部导出）
@@ -27,6 +31,10 @@ LRESULT WINAPI AppShell::wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_SIZE:
         if (self && wParam != SIZE_MINIMIZED)
             self->onResize(LOWORD(lParam), HIWORD(lParam));
+        return 0;
+    case WM_DPICHANGED:  // 跨不同缩放比例的显示器拖动时，系统通知新 DPI
+        if (self)
+            self->onDpiChanged((float)HIWORD(wParam) / 96.0f, lParam);
         return 0;
     case WM_SYSCOMMAND: // 屏蔽 Alt 应用菜单键，避免抢占 ImGui 快捷键
         if ((wParam & 0xfff0) == SC_KEYMENU)
@@ -74,6 +82,28 @@ bool AppShell::createWindow(const AppConfig& config) {
         SOFTG_LOG_ERROR("CreateWindowExW 失败 (%lu)", GetLastError());
         return false;
     }
+    // wndProc 通过 GWLP_USERDATA 取 self；必须在首次 WM_SIZE 前设置，否则 onResize 不生效
+    ::SetWindowLongPtrW(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
+
+    // ---- 系统 DPI 缩放 ----
+    // 环境变量 SOFTG_UI_SCALE（如 1.5）可强制覆盖，便于调试与演示
+    float scale = 0.0f;
+    if (const char* env = std::getenv("SOFTG_UI_SCALE"))
+        scale = (float)std::atof(env);
+    if (scale <= 0.01f) {
+        UINT dpi = ::GetDpiForWindow(hwnd_);
+        scale = dpi ? (float)dpi / 96.0f : 1.0f;
+    }
+    dpiScale_ = std::clamp(scale, 0.5f, 4.0f);
+    if (dpiScale_ != 1.0f) {
+        // 默认窗口尺寸按缩放放大，保持物理尺寸一致；ShowWindow 前完成避免闪动
+        RECT scaled = {0, 0, (LONG)(config.windowSize.x * dpiScale_ + 0.5f),
+                           (LONG)(config.windowSize.y * dpiScale_ + 0.5f)};
+        AdjustWindowRect(&scaled, WS_OVERLAPPEDWINDOW, FALSE);
+        ::SetWindowPos(hwnd_, nullptr, 0, 0, scaled.right - scaled.left,
+                       scaled.bottom - scaled.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
     ::ShowWindow(hwnd_, SW_SHOWDEFAULT);
     ::UpdateWindow(hwnd_);
     return true;
@@ -142,6 +172,24 @@ void AppShell::onResize(UINT w, UINT h) {
     createRenderTarget();
 }
 
+void AppShell::onDpiChanged(float newScale, LPARAM lParam) {
+    newScale = std::clamp(newScale, 0.5f, 4.0f);
+    if (std::fabs(newScale - dpiScale_) < 0.01f)
+        return;
+    float factor = newScale / dpiScale_;
+    dpiScale_ = newScale;
+    if (ImGui::GetCurrentContext()) { // 上下文未建时仅记录，run() 初始化时统一应用
+        ImGui::GetStyle().ScaleAllSizes(factor);
+        ImGui::GetStyle().FontScaleMain = newScale;
+    }
+    SOFTG_LOG_INFO("显示器缩放变更: %.0f%%", newScale * 100.0f);
+    // 按 OS 建议矩形调整窗口，保持物理尺寸观感
+    const RECT* suggested = (const RECT*)lParam;
+    ::SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top,
+                   suggested->right - suggested->left, suggested->bottom - suggested->top,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>& frame) {
     if (!createWindow(config))
         return 1;
@@ -157,7 +205,13 @@ int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>&
     static std::string iniPath = config.iniFilename; // 生命周期覆盖整个循环
     io.IniFilename = iniPath.c_str();
 
-    ImGui::StyleColorsDark();
+    theme::applyModern(); // 现代深色主题（替代 ImGui 默认样式）
+    // 系统缩放：尺寸度量与字号按 DPI 一次缩放（1.92 动态字体系统按需光栅化，无需重载字体）
+    if (dpiScale_ != 1.0f) {
+        ImGui::GetStyle().ScaleAllSizes(dpiScale_);
+        ImGui::GetStyle().FontScaleMain = dpiScale_;
+    }
+    SOFTG_LOG_INFO("UI 缩放: %.0f%%", dpiScale_ * 100.0f);
     font::setupChineseFont(18.0f);
 
     ImGui_ImplWin32_Init(hwnd_);
@@ -188,7 +242,7 @@ int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>&
         }
 
         ImGui::Render();
-        const float clearColor[4] = {0.08f, 0.08f, 0.11f, 1.0f};
+        const float clearColor[4] = {0.055f, 0.067f, 0.086f, 1.0f}; // 与主题 kDarkest 一致
         context_->OMSetRenderTargets(1, &rtv_, nullptr);
         context_->ClearRenderTargetView(rtv_, clearColor);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

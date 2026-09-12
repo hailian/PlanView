@@ -45,7 +45,7 @@ void ComponentRenderer::drawComponent(ImDrawList* dl, const Component& c, const 
             } else {
                 float thick = 3.0f * std::max(scale, 0.6f);
                 dl->AddRect(ImVec2(r.Min.x - 2, r.Min.y - 2), ImVec2(r.Max.x + 2, r.Max.y + 2),
-                            (color & 0x00FFFFFF) | (uint32_t)(255 * alpha) << 24, 4.0f, 0,
+                            (color & 0x00FFFFFF) | (uint32_t)(255 * alpha) << 24, 6.0f * scale, 0,
                             thick);
             }
         }

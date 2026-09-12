@@ -29,15 +29,16 @@ PropertySpec specEnum(std::string key, std::string label, std::string def,
 }
 
 constexpr uint32_t kWhite = IM_COL32(255, 255, 255, 255);
-constexpr uint32_t kTextFg = IM_COL32(234, 234, 234, 255);     // 亮灰白
-constexpr uint32_t kBtnBg = IM_COL32(61, 90, 128, 255);        // 蓝灰
-constexpr uint32_t kBtnPressed = IM_COL32(152, 193, 217, 255);
-constexpr uint32_t kLampOn = IM_COL32(56, 176, 0, 255);        // 绿
-constexpr uint32_t kLampOff = IM_COL32(78, 78, 80, 255);       // 暗灰
-constexpr uint32_t kNeedle = IM_COL32(230, 57, 70, 255);       // 红
-constexpr uint32_t kChartLine = IM_COL32(76, 201, 240, 255);   // 青
-constexpr uint32_t kPanelFill = IM_COL32(38, 38, 58, 255);
-constexpr uint32_t kPanelBorder = IM_COL32(87, 87, 112, 255);
+constexpr uint32_t kTextFg = IM_COL32(230, 233, 239, 255);      // #E6E9EF 亮灰白
+constexpr uint32_t kBtnBg = IM_COL32(59, 130, 246, 255);        // #3B82F6 品牌蓝
+constexpr uint32_t kBtnPressed = IM_COL32(37, 99, 235, 255);    // #2563EB
+constexpr uint32_t kLampOn = IM_COL32(34, 197, 94, 255);        // #22C55E 翠绿
+constexpr uint32_t kLampOff = IM_COL32(58, 64, 77, 255);        // #3A404D 暗灰
+constexpr uint32_t kNeedle = IM_COL32(239, 68, 68, 255);        // #EF4444 红
+constexpr uint32_t kArc = IM_COL32(76, 201, 240, 255);          // #4CC9F0 青
+constexpr uint32_t kChartLine = kArc;
+constexpr uint32_t kPanelFill = IM_COL32(28, 33, 48, 255);      // #1C2130
+constexpr uint32_t kPanelBorder = IM_COL32(46, 53, 66, 255);    // #2E3542
 
 std::vector<ComponentTypeInfo> builtinTypes() {
     std::vector<ComponentTypeInfo> t;
@@ -60,7 +61,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specColor("fgColor", "文字颜色", kWhite),
             specColor("bgColor", "背景颜色", kBtnBg),
             specColor("pressedColor", "按下颜色", kBtnPressed),
-            specDouble("radius", "圆角", 4.0, 0.0, 32.0),
+            specDouble("radius", "圆角", 8.0, 0.0, 32.0),
         };
         t.push_back(std::move(i));
     }
@@ -84,6 +85,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specDouble("startAngle", "起始角", 135.0, -360.0, 360.0),
             specDouble("endAngle", "终止角", 405.0, -360.0, 720.0),
             specInt("majorTicks", "主刻度数", 6, 2, 24),
+            specColor("arcColor", "进度弧颜色", kArc),
             specColor("needleColor", "指针颜色", kNeedle),
             specBool("showValue", "显示数值", true),
         };
@@ -125,7 +127,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             specColor("fill", "填充颜色", kPanelFill),
             specColor("borderColor", "边框颜色", kPanelBorder),
-            specDouble("radius", "圆角", 8.0, 0.0, 32.0),
+            specDouble("radius", "圆角", 10.0, 0.0, 32.0),
             specString("title", "标题", ""),
         };
         t.push_back(std::move(i));

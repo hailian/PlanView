@@ -66,7 +66,7 @@ bool ViewerApp::openPath(const std::string& path) {
     engine_.rebind(project_);
     hasProject_ = true;
     currentPage_ = project_.pages.empty() ? PageId{} : project_.pages.front().id;
-    viewZoom_ = 1.0f;
+    viewZoom_ = 0.0f;  // 首帧按系统 DPI 重新初始化（命令行打开时 run 未启动，此处拿不到缩放）
     viewOffset_ = ImVec2(40, 40);
 
     std::string dir = path;
@@ -116,7 +116,8 @@ void ViewerApp::connectDialog() {
     portBuf_ = std::clamp(portBuf_, 1, 65535);
     pollMsBuf_ = std::clamp(pollMsBuf_, 20, 10000);
     ImGui::Separator();
-    if (ImGui::Button("应用并重连", ImVec2(110, 0))) {
+    float s = shell_.dpiScale();  // 按钮定宽适配高缩放
+    if (ImGui::Button("应用并重连", ImVec2(110 * s, 0))) {
         project_.settings.tcp.host = hostBuf_;
         project_.settings.tcp.port = portBuf_;
         project_.settings.tcp.pollMs = pollMsBuf_;
@@ -125,7 +126,7 @@ void ViewerApp::connectDialog() {
         showConnectDlg_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("断开", ImVec2(80, 0))) {
+    if (ImGui::Button("断开", ImVec2(80 * s, 0))) {
         stopPolling();
         showConnectDlg_ = false;
     }
@@ -141,7 +142,7 @@ bool ViewerApp::frame() {
         // 欢迎界面
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always,
                                 ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(460, 0));
+        ImGui::SetNextWindowSize(ImVec2(460 * shell_.dpiScale(), 0));
         if (ImGui::Begin("页面展示软件", nullptr,
                          ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoCollapse)) {
@@ -228,6 +229,10 @@ void ViewerApp::drawMainUi() {
 }
 
 void ViewerApp::drawPage(ImDrawList* dl, const Page& page) {
+    if (viewZoom_ <= 0.0f) { // 首帧：按系统 DPI 初始化视图，保证页面物理尺寸一致
+        viewZoom_ = shell_.dpiScale();
+        viewOffset_ = ImVec2(40 * viewZoom_, 40 * viewZoom_);
+    }
     ImVec2 avail = ImGui::GetContentRegionAvail();
     ImVec2 canvasMin = ImGui::GetCursorScreenPos();
     ImVec2 canvasMax(canvasMin.x + avail.x, canvasMin.y + avail.y);
@@ -261,8 +266,8 @@ void ViewerApp::drawPage(ImDrawList* dl, const Page& page) {
 
     dl->PushClipRect(canvasMin, canvasMax, true);
 
-    // 页面背景（工作区背景更深）
-    dl->AddRectFilled(canvasMin, canvasMax, IM_COL32(14, 14, 20, 255));
+    // 页面背景（工作区背景更深，与主题底色一致）
+    dl->AddRectFilled(canvasMin, canvasMax, IM_COL32(14, 17, 22, 255));
     ImVec2 pMin = toScreen(ImVec2(0, 0));
     ImVec2 pMax = toScreen(page.size);
     dl->AddRectFilled(pMin, pMax, page.background);
@@ -437,7 +442,7 @@ void ViewerApp::drawStatusBar() {
 }
 
 void ViewerApp::detailPopup(const Component& c) {
-    ImGui::SetNextWindowSize(ImVec2(380, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(380 * shell_.dpiScale(), 0), ImGuiCond_Appearing);
     if (!ImGui::Begin("组件详情", &showDetail_, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;

@@ -3,6 +3,7 @@ add_library(softg_base STATIC
     appshell/AppShell.cpp
     appshell/FileDialog.cpp
     appshell/FontSetup.cpp
+    appshell/Theme.cpp
     log/Log.cpp
     model/ComponentRegistry.cpp
     model/Tag.cpp

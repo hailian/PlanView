@@ -8,7 +8,7 @@
 #   type ∈ bool|int16|uint16|int32|uint32|float32
 #
 # 内置演示数据:
-#   槽位 0..5  float32 正弦波（周期 8s，幅值按槽位变化）
+#   槽位 0..5  float32 正弦波（周期 8s，中值 15+i*5，幅值 12，保证为正且 Temp1 可越过告警阈值 25）
 #   槽位 6     float32 缓变随机游走
 #   槽位 7     bool   1Hz 方波
 #   槽位 8     uint16 计数器
@@ -46,9 +46,10 @@ def animate():
         t = time.time() - t0
         with lock:
             for i in range(6):
-                amp = 10.0 + i * 5.0
+                mid = 15.0 + i * 5.0
                 phase = i * 0.7
-                slots[i] = ("float32", round(amp * math.sin(2 * math.pi * t / 8.0 + phase), 4))
+                slots[i] = ("float32",
+                            round(mid + 12.0 * math.sin(2 * math.pi * t / 8.0 + phase), 4))
             walk += random.uniform(-0.5, 0.5)
             walk = max(0.0, min(40.0, walk))
             slots[6] = ("float32", round(walk, 3))
