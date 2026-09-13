@@ -136,13 +136,25 @@ bool decodeFrameOnce(const FramingConfig& cfg, const std::vector<uint8_t>& frame
         return true;
     }
 
-    // 帧头+Length：帧头须匹配，字段偏移相对整帧
+    // 帧头+Length：帧头须匹配，字段偏移相对负载（帧头 + length 字段之后的数据区，
+    // 与 length 字段语义一致；例如 AA 55|00 02|03 04 → 负载 = 03 04，偏移 0 读到 03）
     if (frame.size() < cfg.header.size()) return false;
     for (size_t i = 0; i < cfg.header.size(); ++i)
         if (frame[i] != cfg.header[i]) return false;
+    const int lenFieldEnd = cfg.lenOffset + cfg.lenBytesHeader;
+    if (cfg.lenOffset < 0 || cfg.lenBytesHeader < 1 || cfg.lenBytesHeader > 4)
+        return false; // 参数非法
+    if ((int)frame.size() < lenFieldEnd) return false;
+    uint64_t len = readUint(frame.data() + cfg.lenOffset, cfg.lenBytesHeader,
+                            cfg.bigEndianHeader);
+    uint64_t total = cfg.lenIncludesAll
+                         ? len
+                         : (uint64_t)lenFieldEnd + len; // length 只计负载
+    if (total < (uint64_t)lenFieldEnd || total > (uint64_t)cfg.maxFrameLen) return false;
+    if ((int)frame.size() < (int)total) return false; // 帧不完整
     tagId = -1;
-    payload = frame.data();
-    payloadLen = (int)frame.size();
+    payload = frame.data() + lenFieldEnd;
+    payloadLen = (int)(total - (uint64_t)lenFieldEnd);
     return true;
 }
 

@@ -42,7 +42,7 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
     }
     bool tlv = props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV";
     ImGui::TextDisabled("%s", tlv ? "TLV：字段按槽位(T)匹配帧，偏移相对该帧负载 V"
-                                  : "帧头+Length：偏移相对整帧首");
+                                  : "帧头+Length：偏移相对负载（帧头 + length 字段之后）");
     if (count == 0) {
         ImGui::TextDisabled("  (无字段：运行器仍可收帧并监视，但不驱动任何标签)");
         return;

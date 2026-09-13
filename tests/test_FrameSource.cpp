@@ -306,6 +306,65 @@ TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {
     CHECK(regen);
 }
 
+TEST_CASE("帧数据源：帧头+Length 字段偏移相对负载") {
+    FrameSourceSettings cfg;
+    cfg.udp = true;
+    cfg.localPort = 59324;
+    cfg.remotePort = 59324;
+    cfg.framing.mode = packet::FrameMode::HeaderLength;
+    cfg.framing.header = hex("AA 55");
+    cfg.framing.lenOffset = 2;
+    cfg.framing.lenBytesHeader = 2;
+    cfg.framing.bigEndianHeader = true;
+    cfg.framing.lenIncludesAll = false; // length 只计负载
+
+    // 两个字段 t1/t2：u8，偏移 0/1（相对负载）
+    TagField f;
+    f.name = "t1";
+    f.offset = 0;
+    f.type = packet::FieldType::U8;
+    f.address = 1;
+    cfg.fields.push_back(f);
+    f.name = "t2";
+    f.offset = 1;
+    f.type = packet::FieldType::U8;
+    f.address = 2;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59324 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("127.0.0.1", 59324);
+    // 帧 = AA 55 | 00 02 | 03 04（负载 2 字节）
+    CHECK(sender.send(hex("AA 55 00 02 03 04"), err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t1 = makeTag("t1", 1, TagDataType::UInt16, 1.0);
+    Tag t2 = makeTag("t2", 2, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t1, &t2};
+    auto results = src.readTags(tags);
+    CHECK(results[0].ok);
+    int64_t v1 = std::get_if<int64_t>(&results[0].value) ? *std::get_if<int64_t>(&results[0].value) : -1;
+    int64_t v2 = std::get_if<int64_t>(&results[1].value) ? *std::get_if<int64_t>(&results[1].value) : -1;
+    CHECK(v1 == 0x03); // 偏移 0 -> 负载首字节 03（而非帧头 AA）
+    CHECK(v2 == 0x04);
+
+    // 帧头不符的报文整体丢弃（不更新值）
+    CHECK(sender.send(hex("BB 66 00 02 09 09"), err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    results = src.readTags(tags);
+    v1 = std::get_if<int64_t>(&results[0].value) ? *std::get_if<int64_t>(&results[0].value) : -1;
+    CHECK(v1 == 0x03); // 未被污染
+
+    sender.stop();
+    src.disconnect();
+}
+
 TEST_CASE("帧数据源：断开后标签质量为不可用") {
     FrameSourceSettings cfg;
     cfg.udp = true;
