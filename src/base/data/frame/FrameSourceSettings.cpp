@@ -86,12 +86,15 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
 FrameSourceSettings frameSettingsFromProject(const Project& p) {
     FrameSourceSettings s = p.settings.frame; // 旧工程回退（无数据源组件时保留）
 
+    // 数据源组件存在即生效（取首个；autoStart 仅决定 PageViewer 打开时是否主动连接，
+    // 默认关 = 打开后在运行器顶栏手动启动，配置本身始终可用）
     const Component* ds = p.findComponentByType("DataSource");
     if (!ds)
         return s; // enabled 维持工程设置（默认 false → SoftG 行协议）
 
     // 传输来自数据源组件（TCP / UDP / 串口；串口独占一组属性，角色/端口项不适用）
     s.enabled = true; // 数据源组件存在即启用
+    s.autoStart = props::asBool(ds->propOr("autoStart", false)); // 默认关：运行器手动启动
     std::string transport = props::asString(ds->propOr("transport", std::string("UDP")));
     s.udp = transport == "UDP";
     s.serial = transport == "串口";

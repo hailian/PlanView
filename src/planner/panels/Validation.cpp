@@ -65,12 +65,14 @@ void drawValidation(PlannerContext& ctx) {
     std::vector<const Component*> protocols; // 协议配置组件（重名检测用）
     {
         int dsCount = 0;
+        int autoStartCount = 0;
         const Component* firstDs = nullptr;
         for (const auto& pg : p.pages)
             for (const auto& c : pg.components)
                 if (c.typeId == "DataSource") {
                     if (!firstDs) firstDs = &c;
                     ++dsCount;
+                    if (props::asBool(c.propOr("autoStart", false))) ++autoStartCount;
                 } else if (c.typeId == "ProtocolConfig") {
                     protocols.push_back(&c);
                 }
@@ -78,6 +80,9 @@ void drawValidation(PlannerContext& ctx) {
             issues.push_back({"数据源组件超过一个（仅第一个生效）: " +
                                   std::to_string(dsCount) + " 个",
                               firstDs ? firstDs->id : "", true});
+        if (firstDs && autoStartCount == 0)
+            issues.push_back({"数据源未设自动启动（PageViewer 打开后在顶栏手动启动数据源）",
+                              firstDs->id, false});
         // 数据源关联的协议必须存在（按名称匹配）
         if (firstDs) {
             std::string protoName =

@@ -144,6 +144,8 @@ std::vector<ComponentTypeInfo> builtinTypes() {
       // 拆帧与规约字段由「协议配置」组件提供，经 protocol 属性按名称关联）
         ComponentTypeInfo i{"DataSource", "数据源", "通信", {170, 84}, {}};
         i.properties = {
+            // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
+            specBool("autoStart", "自动启动", false),
             specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口"}),
             // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端
             specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端"}),

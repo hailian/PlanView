@@ -13,6 +13,9 @@ void PollWorker::start(const ProjectSettings& settings, const std::vector<Tag>& 
     tags_ = tags;
     stopFlag_ = false;
     connected_ = false;
+    // 帧数据源按 autoStart 决定初始状态（默认关 = 打开工程不主动连接，等手动启动）；
+    // 行协议无此开关，维持打开即连
+    sourceRunning_.store(!settings_.frame.enabled || settings_.frame.autoStart);
     thread_ = std::thread([this] { run(); });
 }
 
@@ -88,6 +91,17 @@ void PollWorker::run() {
     };
 
     while (!stopFlag_) {
+        // 手动停止（或 autoStart 关的初始态）：保持断开，标签报未启动，等待重新开启
+        if (!sourceRunning_.load()) {
+            if (ds->isConnected()) {
+                ds->disconnect();
+                connected_ = false;
+            }
+            failAll("数据源未启动");
+            for (int slept = 0; slept < 500 && !stopFlag_; slept += 20)
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            continue;
+        }
         if (!ds->isConnected()) {
             std::string err;
             if (!ds->connect(err)) {

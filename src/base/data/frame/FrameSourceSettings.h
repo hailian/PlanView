@@ -32,6 +32,7 @@ struct TagField {
 
 struct FrameSourceSettings {
     bool enabled = false;            // true=帧数据源；false=原 SoftG TCP 行协议
+    bool autoStart = false;          // 仅帧数据源：true=PageViewer 打开即连接；false=顶栏手动启动
     bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
     bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
     bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)
@@ -58,7 +59,8 @@ void protocolFramingFromComponent(const Component& proto, packet::FramingConfig&
                                   std::vector<TagField>& fields);
 
 // 工程级合成：取首个数据源组件（传输）+ 其 protocol 属性按名称关联的协议配置组件
-//（拆帧/字段）。无数据源组件时返回旧工程 settings.frame 或 disabled（走行协议）。
+//（拆帧/字段）。数据源组件存在即生效（autoStart 仅控制 PageViewer 打开时是否主动连接，
+// 默认关 = 手动启动）。无数据源组件时返回旧工程 settings.frame 或 disabled（走行协议）。
 FrameSourceSettings frameSettingsFromProject(const Project& p);
 
 // 组件直接绑定协议字段的属性名（"协议名/字段名" 存于组件 bindField 属性）

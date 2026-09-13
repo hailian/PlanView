@@ -67,6 +67,7 @@
           "h": 84,
           "z": -1,
           "properties": {
+            "autoStart": true,
             "transport": "UDP",
             "host": "127.0.0.1",
             "remotePort": 9001,

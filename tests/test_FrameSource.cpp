@@ -185,6 +185,7 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
 
     // 数据源组件（TCP + 关联协议）
     Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("autoStart", true);
     ds.setProp("transport", std::string("TCP"));
     ds.setProp("host", std::string("192.168.1.50"));
     ds.setProp("remotePort", int64_t(8888));
@@ -223,6 +224,7 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
 
     // 默认数据源（未改属性）：UDP + 未关联协议
     Component fresh = ComponentRegistry::createComponent("DataSource", "ds-2");
+    fresh.setProp("autoStart", true);
     p.pages[0].components.clear();
     p.pages[0].components.push_back(fresh);
     FrameSourceSettings d = frameSettingsFromProject(p);
@@ -308,12 +310,43 @@ TEST_CASE("帧数据源：字段 scale 工程换算（协议侧）") {
     src.disconnect();
 }
 
+TEST_CASE("帧数据源：autoStart 默认关（打开不主动连，可手动启动）") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+
+    // 默认（未设置 autoStart）：配置仍生效（enabled=true），仅不自动启动
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("transport", std::string("UDP"));
+    ds.setProp("protocol", std::string("某协议"));
+    p.pages[0].components.push_back(ds);
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    CHECK(s.enabled);        // 帧数据源已配置
+    CHECK(!s.autoStart);     // 默认关：PageViewer 打开后手动启动
+
+    // 勾选自动启动 -> autoStart=true
+    p.pages[0].components[0].setProp("autoStart", true);
+    FrameSourceSettings s2 = frameSettingsFromProject(p);
+    CHECK(s2.enabled);
+    CHECK(s2.autoStart);
+
+    // 多个数据源：仍取首个（autoStart 不影响选源，仅控制自动连接）
+    Component second = ComponentRegistry::createComponent("DataSource", "ds-2");
+    second.setProp("transport", std::string("串口"));
+    second.setProp("serialPort", std::string("COM5"));
+    p.pages[0].components.push_back(second);
+    FrameSourceSettings s3 = frameSettingsFromProject(p);
+    CHECK(s3.udp); // 生效者仍是排前的 ds-1
+}
+
 TEST_CASE("帧数据源：串口传输的工程级合成") {
     Project p;
     Page pg;
     pg.id = "page-1";
     p.pages.push_back(std::move(pg));
     Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("autoStart", true);
     ds.setProp("transport", std::string("串口"));
     ds.setProp("serialPort", std::string("COM7"));
     ds.setProp("baud", int64_t(115200));
@@ -335,6 +368,7 @@ TEST_CASE("帧数据源：串口传输的工程级合成") {
 
     // 默认串口参数（未改属性）
     Component fresh = ComponentRegistry::createComponent("DataSource", "ds-2");
+    fresh.setProp("autoStart", true);
     fresh.setProp("transport", std::string("串口"));
     p.pages[0].components.clear();
     p.pages[0].components.push_back(fresh);
@@ -517,6 +551,7 @@ TEST_CASE("帧数据源：UDP 角色 -> 客户端/服务端设置合成") {
         Page pg;
         pg.id = "page-1";
         Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("autoStart", true);
         ds.setProp("transport", std::string(transport));
         if (role) ds.setProp("udpRole", std::string(role));
         ds.setProp("host", std::string("10.0.0.5"));
@@ -610,6 +645,7 @@ TEST_CASE("帧数据源：TCP 角色 -> 客户端/服务端设置合成") {
         Page pg;
         pg.id = "page-1";
         Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("autoStart", true);
         ds.setProp("transport", std::string("TCP"));
         if (role) ds.setProp("tcpRole", std::string(role));
         ds.setProp("host", std::string("10.0.0.6"));

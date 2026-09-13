@@ -106,6 +106,7 @@ static Json projectToJson(const Project& p) {
         Json jf;
         jf["udp"] = fr.udp;
         jf["serial"] = fr.serial;
+        jf["autoStart"] = fr.autoStart; // 默认关：PageViewer 手动启动
         jf["udpClient"] = fr.udpClient;
         jf["tcpClient"] = fr.tcpClient;
         jf["host"] = fr.host;
@@ -321,6 +322,7 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
             fr.enabled = f.value("enabled", true); // 有 frame 段即视为启用
             fr.udp = f.value("udp", fr.udp);
             fr.serial = f.value("serial", false); // 旧工程无此字段 → 非 TCP 即 UDP
+            fr.autoStart = f.value("autoStart", true); // 旧工程无此字段 → 维持打开即连
             fr.udpClient = f.value("udpClient", fr.udpClient);
             fr.tcpClient = f.value("tcpClient", fr.tcpClient);
             fr.host = f.value("host", fr.host);

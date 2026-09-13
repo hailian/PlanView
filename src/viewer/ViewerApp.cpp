@@ -192,6 +192,15 @@ void ViewerApp::drawMainUi() {
         if (ImGui::Button("连接设置")) showConnectDlg_ = true;
         if (project_.settings.frame.enabled) {
             ImGui::SameLine();
+            // 帧数据源手动启停（autoStart 关时打开工程不主动连接，由此启动）
+            if (worker_.sourceRunning()) {
+                if (ImGui::Button("停止数据源")) worker_.setSourceRunning(false);
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "数据源未启动");
+                ImGui::SameLine();
+                if (ImGui::Button("启动数据源")) worker_.setSourceRunning(true);
+            }
+            ImGui::SameLine();
             ImGui::Checkbox("报文监视", &showFrameMonitor_);
         }
         ImGui::SameLine();

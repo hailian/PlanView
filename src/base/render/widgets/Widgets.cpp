@@ -438,7 +438,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                     const RenderContext& ctx, float scale) {
     (void)ctx;
     float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
-    ImU32 accent = kDefaultArc;
+    bool autoStart = props::asBool(c.propOr("autoStart", false));
+    // 未设自动启动：左侧品牌竖条置灰 + 标题旁标注（PageViewer 打开后需手动启动）
+    ImU32 accent = autoStart ? kDefaultArc : IM_COL32(96, 102, 114, 255);
 
     dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
     dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
@@ -462,6 +464,12 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
 
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
                 kDefaultTextFg, "数据源");
+    if (!autoStart) { // 标题右侧标注（按标题实测宽度定位，避免重叠）
+        ImVec2 ts = font()->CalcTextSizeA(15.0f * scale, FLT_MAX, -1.0f, "数据源");
+        dl->AddText(font(), 13.0f * scale,
+                    ImVec2(r.Min.x + 14.0f * scale + ts.x + 6.0f * scale, r.Min.y + 9.0f * scale),
+                    IM_COL32(150, 150, 110, 255), "需手动启动");
+    }
     char line[128];
     if (transport == "串口") { // 参数行："COM3 115200-8-N-1"
         std::snprintf(line, sizeof(line), "串口 %s %lld-%lld-%c-%lld", serialPort.c_str(),
