@@ -77,14 +77,16 @@ FrameDataSource::~FrameDataSource() { disconnect(); }
 bool FrameDataSource::connect(std::string& err) {
     disconnect();
     splitter_.setConfig(cfg_.framing);
-    if (cfg_.udp)
+    if (cfg_.udp) {
+        if (cfg_.udpClient)
+            return udp_.startClient(cfg_.host, cfg_.remotePort, err);
         return udp_.start(cfg_.localPort, err);
-
-    if (!tcp_.connect(cfg_.host, cfg_.remotePort, err)) {
-        // TCP 连接失败交由 PollWorker 退避重试；构造状态保持干净
-        return false;
     }
-    return true;
+
+    // TCP：客户端连接远端 / 服务端监听本地（失败交由 PollWorker 退避重试）
+    if (cfg_.tcpClient)
+        return tcp_.connect(cfg_.host, cfg_.remotePort, err);
+    return tcp_.listen(cfg_.localPort, err);
 }
 
 void FrameDataSource::disconnect() {

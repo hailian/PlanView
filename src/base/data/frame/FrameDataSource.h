@@ -1,5 +1,6 @@
 // FrameDataSource — 帧数据源组件：TCP/UDP 接入 + 自配置规约解析 + 标签槽位映射。
 // TCP 字节流按 TLV / 帧头+Length 拆帧；UDP 数据报天然成帧。
+// 传输角色：客户端 connect 远端 / 服务端监听（TCP listen / UDP bind）本地端口。
 // 推收结合：收包线程持续成帧并解析缓存；readTags 返回各标签槽位的最新解析值。
 // v1 只收不发（supportsWrite=false），写回走原 SoftG 行协议数据源。
 #pragma once
@@ -28,7 +29,7 @@ public:
     explicit FrameDataSource(FrameSourceSettings settings);
     ~FrameDataSource() override;
 
-    bool connect(std::string& err) override;   // TCP: 连接远端；UDP: 绑定本地端口
+    bool connect(std::string& err) override;   // 客户端( TCP/UDP ): 连接远端；服务端( TCP/UDP ): 监听/绑定本地端口
     void disconnect() override;
     bool isConnected() const override;
 

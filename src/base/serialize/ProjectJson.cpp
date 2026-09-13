@@ -105,6 +105,8 @@ static Json projectToJson(const Project& p) {
         const FrameSourceSettings& fr = p.settings.frame;
         Json jf;
         jf["udp"] = fr.udp;
+        jf["udpClient"] = fr.udpClient;
+        jf["tcpClient"] = fr.tcpClient;
         jf["host"] = fr.host;
         jf["remotePort"] = fr.remotePort;
         jf["localPort"] = fr.localPort;
@@ -303,6 +305,8 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
             FrameSourceSettings& fr = p.settings.frame;
             fr.enabled = f.value("enabled", true); // 有 frame 段即视为启用
             fr.udp = f.value("udp", fr.udp);
+            fr.udpClient = f.value("udpClient", fr.udpClient);
+            fr.tcpClient = f.value("tcpClient", fr.tcpClient);
             fr.host = f.value("host", fr.host);
             fr.remotePort = f.value("remotePort", fr.remotePort);
             fr.localPort = f.value("localPort", fr.localPort);

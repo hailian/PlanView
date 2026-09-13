@@ -1,5 +1,5 @@
-// TcpLink — TCP 报文链路：连接远端收字节流（后台线程）+ 发送原始字节。
-// 拆帧由 FrameSplitter 在消费侧完成，本类只搬运原始字节。
+// TcpLink — TCP 报文链路：连接远端（客户端）或监听本地（服务端）收字节流 +
+// 发送原始字节。拆帧由 FrameSplitter 在消费侧完成，本类只搬运原始字节。
 #pragma once
 
 #include <atomic>
@@ -24,10 +24,13 @@ public:
     TcpLink(const TcpLink&) = delete;
     TcpLink& operator=(const TcpLink&) = delete;
 
-    // 连接远端（500ms 连接超时）；成功后启动收包线程
+    // 客户端：连接远端（500ms 连接超时）；成功后启动收包线程
     bool connect(const std::string& host, int port, std::string& err);
+    // 服务端：监听本地端口，等待设备接入（单连接；断开后自动回到监听）
+    bool listen(int port, std::string& err);
     void disconnect();
-    bool isConnected() const { return connected_; }
+    // 监听中即视为已接入（避免消费方反复重连）
+    bool isConnected() const { return connected_ || listening_; }
 
     // 发送原始字节（报文调试中手写 HEX）
     bool send(const std::vector<uint8_t>& data, std::string& err);
@@ -39,10 +42,13 @@ public:
     std::string lastError();
 
 private:
-    void recvLoop();
+    void recvLoop();   // 在 sock_ 上收字节直到断开（客户端/服务端接入后共用）
+    void acceptLoop(); // 服务端：select + accept，接入后进入 recvLoop，断开回到监听
 
-    uintptr_t sock_ = (uintptr_t)-1; // SOCKET
+    uintptr_t sock_ = (uintptr_t)-1;       // SOCKET（当前连接）
+    uintptr_t listenSock_ = (uintptr_t)-1; // SOCKET（监听，仅服务端）
     std::atomic<bool> connected_{false};
+    std::atomic<bool> listening_{false};   // 服务端监听中
     std::thread thread_;
     std::mutex mutex_;
     std::deque<TcpChunk> inbox_;

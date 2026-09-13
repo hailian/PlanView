@@ -379,3 +379,208 @@ TEST_CASE("帧数据源：断开后标签质量为不可用") {
     auto results = src.readTags(tags);
     CHECK(!results[0].ok);
 }
+
+TEST_CASE("帧数据源：UDP 角色 -> 客户端/服务端设置合成") {
+    auto makeDs = [](const char* transport, const char* role) {
+        Project p;
+        Page pg;
+        pg.id = "page-1";
+        Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("transport", std::string(transport));
+        if (role) ds.setProp("udpRole", std::string(role));
+        ds.setProp("host", std::string("10.0.0.5"));
+        ds.setProp("remotePort", int64_t(5000));
+        pg.components.push_back(std::move(ds));
+        p.pages.push_back(std::move(pg));
+        return p;
+    };
+
+    Project pc = makeDs("UDP", "客户端");
+    FrameSourceSettings sc = frameSettingsFromProject(pc);
+    CHECK(sc.enabled);
+    CHECK(sc.udp);
+    CHECK(sc.udpClient);
+    CHECK(sc.remotePort == 5000);
+
+    Project ps = makeDs("UDP", "服务端");
+    CHECK(!frameSettingsFromProject(ps).udpClient);
+
+    Project pd = makeDs("UDP", nullptr); // 缺省按服务端（向后兼容旧工程）
+    CHECK(!frameSettingsFromProject(pd).udpClient);
+
+    Project pt = makeDs("TCP", "客户端"); // TCP 忽略 UDP 角色
+    CHECK(!frameSettingsFromProject(pt).udpClient);
+}
+
+TEST_CASE("UdpLink 客户端：connect 远端收包") {
+    const int serverPort = 59330;
+    packet::UdpLink server;
+    std::string err;
+    if (!server.start(serverPort, err)) {
+        std::printf("    [skip] 端口 %d 绑定失败: %s\n", serverPort, err.c_str());
+        return;
+    }
+    packet::UdpLink client;
+    CHECK(client.startClient("127.0.0.1", serverPort, err));
+    CHECK(client.isRunning());
+
+    // 客户端先发探测帧，服务端据此获知客户端临时端口
+    CHECK(client.send(hex("AA 55 00 02 03 04"), err));
+    std::deque<packet::UdpPacket> atServer;
+    for (int i = 0; i < 20 && atServer.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        server.drain(atServer);
+    }
+    REQUIRE(!atServer.empty());
+    std::string from = atServer.front().from; // "ip:port"
+    size_t colon = from.rfind(':');
+    REQUIRE(colon != std::string::npos);
+    server.setRemote(from.substr(0, colon), std::stoi(from.substr(colon + 1)));
+
+    // 服务端回发 → 客户端仅收该对端，应收到
+    CHECK(server.send(hex("11 22 33"), err));
+    std::deque<packet::UdpPacket> atClient;
+    for (int i = 0; i < 20 && atClient.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        client.drain(atClient);
+    }
+    REQUIRE(!atClient.empty());
+    CHECK(atClient.front().data == hex("11 22 33"));
+
+    client.stop();
+    server.stop();
+}
+
+TEST_CASE("帧数据源：UDP 客户端 connect 远端冒烟") {
+    const int serverPort = 59331;
+    packet::UdpLink server;
+    std::string err;
+    if (!server.start(serverPort, err)) {
+        std::printf("    [skip] 端口 %d 绑定失败: %s\n", serverPort, err.c_str());
+        return;
+    }
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = true;
+    cfg.udpClient = true;
+    cfg.host = "127.0.0.1";
+    cfg.remotePort = serverPort;
+
+    FrameDataSource src(cfg);
+    CHECK(src.connect(err));
+    CHECK(src.isConnected());
+    src.disconnect();
+    server.stop();
+}
+
+TEST_CASE("帧数据源：TCP 角色 -> 客户端/服务端设置合成") {
+    auto makeDs = [](const char* role) {
+        Project p;
+        Page pg;
+        pg.id = "page-1";
+        Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("transport", std::string("TCP"));
+        if (role) ds.setProp("tcpRole", std::string(role));
+        ds.setProp("host", std::string("10.0.0.6"));
+        ds.setProp("remotePort", int64_t(6000));
+        ds.setProp("localPort", int64_t(6001));
+        pg.components.push_back(std::move(ds));
+        p.pages.push_back(std::move(pg));
+        return p;
+    };
+
+    FrameSourceSettings sc = frameSettingsFromProject(makeDs("客户端"));
+    CHECK(sc.enabled);
+    CHECK(!sc.udp);
+    CHECK(sc.tcpClient); // 客户端=连接远端
+    CHECK(!sc.udpClient); // TCP 不影响 UDP 角色
+
+    FrameSourceSettings ss = frameSettingsFromProject(makeDs("服务端"));
+    CHECK(!ss.tcpClient); // 服务端=监听本地
+    CHECK(ss.localPort == 6001);
+
+    CHECK(frameSettingsFromProject(makeDs(nullptr)).tcpClient); // 缺省=客户端（向后兼容）
+}
+
+TEST_CASE("TcpLink 服务端：监听接入收字节并可重连") {
+    const int port = 59340;
+    packet::TcpLink server;
+    std::string err;
+    if (!server.listen(port, err)) {
+        std::printf("    [skip] 端口 %d 监听失败: %s\n", port, err.c_str());
+        return;
+    }
+    CHECK(server.isConnected()); // 监听中即视为已接入
+
+    packet::TcpLink client;
+    CHECK(client.connect("127.0.0.1", port, err));
+    CHECK(client.send(hex("DE AD BE EF"), err));
+    std::deque<packet::TcpChunk> in;
+    for (int i = 0; i < 20 && in.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        server.drain(in);
+    }
+    REQUIRE(!in.empty());
+    CHECK(in.front().data == hex("DE AD BE EF"));
+
+    // 断开后服务端回到监听，仍可再次接入
+    client.disconnect();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(server.isConnected());
+
+    packet::TcpLink client2;
+    CHECK(client2.connect("127.0.0.1", port, err));
+    CHECK(client2.send(hex("01 02"), err));
+    std::deque<packet::TcpChunk> in2;
+    for (int i = 0; i < 20 && in2.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        server.drain(in2);
+    }
+    REQUIRE(!in2.empty());
+    CHECK(in2.front().data == hex("01 02"));
+
+    client2.disconnect();
+    server.disconnect();
+}
+
+TEST_CASE("帧数据源：TCP 服务端接入 → 解析 → 标签值") {
+    const int port = 59341;
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = false;
+    cfg.tcpClient = false; // 服务端：监听本地端口
+    cfg.localPort = port;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.bigEndian = true;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    CHECK(src.connect(err));
+    CHECK(src.isConnected());
+
+    // 设备主动连接并发送 TLV 帧 T=01 L=0002 V=01F4(500)
+    packet::TcpLink client;
+    CHECK(client.connect("127.0.0.1", port, err));
+    CHECK(client.send(hex("01 00 02 01 F4"), err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t = makeTag("温度", 0, TagDataType::Float32, 0.1);
+    std::vector<const Tag*> tags = {&t};
+    auto results = src.readTags(tags);
+    REQUIRE(results.size() == 1);
+    CHECK(results[0].ok);
+    double eng = 0;
+    if (auto* d = std::get_if<double>(&results[0].value)) eng = *d;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) eng = (double)*i;
+    CHECK(eng == 50.0); // 500 * 0.1
+
+    client.disconnect();
+    src.disconnect();
+    CHECK(!src.isConnected());
+}

@@ -74,6 +74,9 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     // 传输来自数据源组件
     s.enabled = true; // 数据源组件存在即启用
     s.udp = props::asString(ds->propOr("transport", std::string("UDP"))) != "TCP";
+    s.udpClient = s.udp &&
+                  props::asString(ds->propOr("udpRole", std::string("服务端"))) == "客户端";
+    s.tcpClient = props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
     s.localPort = (int)props::asInt(ds->propOr("localPort", int64_t(s.localPort)));

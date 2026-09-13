@@ -30,9 +30,11 @@ struct TagField {
 struct FrameSourceSettings {
     bool enabled = false;            // true=帧数据源；false=原 SoftG TCP 行协议
     bool udp = false;                // true=UDP 数据报；false=TCP 字节流（需拆帧）
-    std::string host = "127.0.0.1";  // TCP 连接目标 / UDP 发送目标
-    int remotePort = 9001;           // TCP 远端端口 / UDP 发送目标端口
-    int localPort = 9001;            // UDP 本地绑定端口
+    bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)
+    bool tcpClient = true;           // 仅 TCP：true=客户端(connect 远端)；false=服务端(listen 本地)
+    std::string host = "127.0.0.1";  // TCP 客户端 / UDP 客户端连接目标
+    int remotePort = 9001;           // TCP 客户端远端端口 / UDP 客户端目标端口
+    int localPort = 9001;            // TCP 服务端监听端口 / UDP 服务端本地绑定端口
 
     packet::FramingConfig framing;   // 仅 TCP 生效；UDP 天然成帧
 

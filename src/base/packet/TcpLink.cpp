@@ -76,13 +76,63 @@ bool TcpLink::connect(const std::string& host, int port, std::string& err) {
     return true;
 }
 
+bool TcpLink::listen(int port, std::string& err) {
+    disconnect();
+
+    WSADATA wsa;
+    if (::WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        err = "WSAStartup 失败";
+        return false;
+    }
+    SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) {
+        err = "socket 创建失败";
+        ::WSACleanup();
+        return false;
+    }
+    BOOL reuse = TRUE;
+    ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((u_short)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    if (::bind(s, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        err = "绑定端口失败: " + std::to_string(port) +
+              " (WSA=" + std::to_string(WSAGetLastError()) + ")";
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    if (::listen(s, SOMAXCONN) == SOCKET_ERROR) {
+        err = "listen 失败 (WSA=" + std::to_string(WSAGetLastError()) + ")";
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    listenSock_ = (uintptr_t)s;
+    listening_ = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        lastError_.clear();
+    }
+    thread_ = std::thread([this] { acceptLoop(); });
+    SOFTG_LOG_INFO("TCP 监听启动: 端口 %d", port);
+    return true;
+}
+
 void TcpLink::disconnect() {
-    if (!connected_ && sock_ == (uintptr_t)-1) return;
+    if (!connected_ && !listening_ && sock_ == (uintptr_t)-1 && listenSock_ == (uintptr_t)-1)
+        return;
     connected_ = false;
+    listening_ = false;
     if (thread_.joinable()) thread_.join();
     if (sock_ != (uintptr_t)-1) {
         ::closesocket((SOCKET)sock_);
         sock_ = (uintptr_t)-1;
+    }
+    if (listenSock_ != (uintptr_t)-1) {
+        ::closesocket((SOCKET)listenSock_);
+        listenSock_ = (uintptr_t)-1;
     }
     ::WSACleanup();
 }
@@ -134,6 +184,33 @@ void TcpLink::recvLoop() {
             lastError_ = "接收错误 (WSA=" + std::to_string(wsa) + ")";
             break;
         }
+    }
+    connected_ = false;
+}
+
+void TcpLink::acceptLoop() {
+    while (listening_) {
+        fd_set r;
+        FD_ZERO(&r);
+        FD_SET((SOCKET)listenSock_, &r);
+        timeval tv{0, 300 * 1000};
+        int rc = ::select(0, &r, nullptr, nullptr, &tv);
+        if (rc <= 0) continue; // 超时/出错：回到循环检查退出标志
+        SOCKET c = ::accept((SOCKET)listenSock_, nullptr, nullptr);
+        if (c == INVALID_SOCKET) continue;
+        DWORD tvr = 300; // 收包轮询超时，便于线程检查退出标志
+        ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tvr, sizeof(tvr));
+        sock_ = (uintptr_t)c;
+        connected_ = true;
+        SOFTG_LOG_INFO("TCP 客户端已接入");
+        recvLoop(); // 阻塞收字节，直到对端断开或出错
+        ::closesocket(c);
+        sock_ = (uintptr_t)-1;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            lastError_ = "对端已断开，等待重新接入";
+        }
+        SOFTG_LOG_INFO("TCP 客户端断开，回到监听");
     }
     connected_ = false;
 }

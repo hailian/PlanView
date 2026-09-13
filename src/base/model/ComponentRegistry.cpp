@@ -145,9 +145,13 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         ComponentTypeInfo i{"DataSource", "数据源", "通信", {170, 84}, {}};
         i.properties = {
             specEnum("transport", "传输方式", "UDP", {"UDP", "TCP"}),
+            // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端
+            specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端"}),
+            // TCP 角色：客户端=连接远端；服务端=监听本地端口等待设备接入
+            specEnum("tcpRole", "TCP角色", "客户端", {"客户端", "服务端"}),
             specString("host", "主机/目标IP", "127.0.0.1"),
             specInt("remotePort", "远端端口", 9001, 1, 65535),
-            specInt("localPort", "UDP本地端口", 9001, 1, 65535),
+            specInt("localPort", "本地监听端口", 9001, 1, 65535),
             specString("protocol", "关联协议", ""), // 协议配置组件名（Inspector 动态下拉）
         };
         t.push_back(std::move(i));

@@ -448,6 +448,8 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                       accent, 2.0f * scale);
 
     std::string transport = props::asString(c.propOr("transport", std::string("UDP")));
+    std::string udpRole = props::asString(c.propOr("udpRole", std::string("服务端")));
+    std::string tcpRole = props::asString(c.propOr("tcpRole", std::string("客户端")));
     std::string host = props::asString(c.propOr("host", std::string("127.0.0.1")));
     int64_t remotePort = props::asInt(c.propOr("remotePort", int64_t(9001)));
     int64_t localPort = props::asInt(c.propOr("localPort", int64_t(9001)));
@@ -456,11 +458,18 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
                 kDefaultTextFg, "数据源");
     char line[128];
-    if (transport == "TCP")
-        std::snprintf(line, sizeof(line), "TCP %s:%lld", host.c_str(), (long long)remotePort);
-    else
-        std::snprintf(line, sizeof(line), "UDP :%lld -> %s:%lld", (long long)localPort,
-                      host.c_str(), (long long)remotePort);
+    if (transport == "TCP") {
+        if (tcpRole == "服务端")
+            std::snprintf(line, sizeof(line), "TCP服务端 :%lld", (long long)localPort);
+        else
+            std::snprintf(line, sizeof(line), "TCP %s:%lld", host.c_str(),
+                          (long long)remotePort);
+    } else if (udpRole == "客户端") {
+        std::snprintf(line, sizeof(line), "UDP客户端 -> %s:%lld", host.c_str(),
+                      (long long)remotePort);
+    } else {
+        std::snprintf(line, sizeof(line), "UDP服务端 :%lld", (long long)localPort);
+    }
     dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
                 IM_COL32(160, 172, 192, 255), line);
     std::snprintf(line, sizeof(line), "协议: %s",

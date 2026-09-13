@@ -7,6 +7,12 @@
 
 #include <cstring>
 
+#ifndef SIO_UDP_CONNRESET
+// MSWSock.h 中的定义；此处内联以免额外 SDK 头依赖。
+// 连接式 UDP 下屏蔽「远端不可达 → WSAECONNRESET」导致的收包中断。
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+
 #pragma comment(lib, "ws2_32.lib")
 
 namespace softg::packet {
@@ -26,21 +32,34 @@ bool fillAddr(const std::string& host, int port, sockaddr_in& addr, std::string&
 
 } // namespace
 
-bool UdpLink::start(int localPort, std::string& err) {
-    stop();
-
+// 建 socket 并完成 WSAStartup；失败由调用方 closesocket/WSACleanup
+static SOCKET makeSocket(std::string& err) {
     WSADATA wsa;
     if (::WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
         err = "WSAStartup 失败";
-        return false;
+        return INVALID_SOCKET;
     }
-
     SOCKET s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s == INVALID_SOCKET) {
         err = "socket 创建失败";
         ::WSACleanup();
-        return false;
     }
+    return s;
+}
+
+void UdpLink::launch(uintptr_t sock) {
+    DWORD tv = 300; // 收包轮询超时，便于线程检查退出标志
+    ::setsockopt((SOCKET)sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    sock_ = sock;
+    running_ = true;
+    thread_ = std::thread([this] { recvLoop(); });
+}
+
+bool UdpLink::start(int localPort, std::string& err) {
+    stop();
+
+    SOCKET s = makeSocket(err);
+    if (s == INVALID_SOCKET) return false;
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
     addr.sin_port = htons((u_short)localPort);
@@ -52,13 +71,37 @@ bool UdpLink::start(int localPort, std::string& err) {
         ::WSACleanup();
         return false;
     }
-    DWORD tv = 300; // 收包轮询超时，便于线程检查退出标志
-    ::setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-
-    sock_ = (uintptr_t)s;
-    running_ = true;
-    thread_ = std::thread([this] { recvLoop(); });
+    launch((uintptr_t)s);
     SOFTG_LOG_INFO("UDP 监听启动: 端口 %d", localPort);
+    return true;
+}
+
+bool UdpLink::startClient(const std::string& host, int port, std::string& err) {
+    stop();
+
+    SOCKET s = makeSocket(err);
+    if (s == INVALID_SOCKET) return false;
+    sockaddr_in addr{};
+    if (!fillAddr(host, port, addr, err)) {
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    if (::connect(s, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        err = "连接远端失败: " + host + ":" + std::to_string(port) +
+              " (WSA=" + std::to_string(WSAGetLastError()) + ")";
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    // 关闭「远端不可达 → WSAECONNRESET」行为，否则对端未监听时收包线程会被打断
+    BOOL reportConnReset = FALSE;
+    DWORD bytesReturned = 0;
+    ::WSAIoctl(s, SIO_UDP_CONNRESET, &reportConnReset, sizeof(reportConnReset), nullptr, 0,
+               &bytesReturned, nullptr, nullptr);
+    setRemote(host, port); // 使 send() 可用
+    launch((uintptr_t)s);
+    SOFTG_LOG_INFO("UDP 客户端连接: %s:%d", host.c_str(), port);
     return true;
 }
 

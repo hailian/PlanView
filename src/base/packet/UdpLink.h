@@ -24,8 +24,10 @@ public:
     UdpLink(const UdpLink&) = delete;
     UdpLink& operator=(const UdpLink&) = delete;
 
-    // 绑定本地端口并启动收包线程；失败返回 false + err
+    // 服务端：绑定本地端口并启动收包线程（收任意对端）；失败返回 false + err
     bool start(int localPort, std::string& err);
+    // 客户端：connect 远端（仅收该对端，本地端口由系统临时分配）；失败返回 false + err
+    bool startClient(const std::string& host, int port, std::string& err);
     void stop();
     bool isRunning() const { return running_; }
 
@@ -38,6 +40,8 @@ public:
 
 private:
     void recvLoop();
+    // 公共收尾：设收包超时 + 启用收包线程（sock 已建立/绑定/连接）
+    void launch(uintptr_t sock);
 
     uintptr_t sock_ = (uintptr_t)-1; // SOCKET
     std::atomic<bool> running_{false};

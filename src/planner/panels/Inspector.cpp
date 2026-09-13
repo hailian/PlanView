@@ -344,12 +344,24 @@ void drawInspector(PlannerContext& ctx) {
         bool isDs = c->typeId == "DataSource";
         bool isProto = c->typeId == "ProtocolConfig";
         bool dsTcp = props::asString(c->propOr("transport", std::string("UDP"))) == "TCP";
+        bool dsUdpClient =
+            !dsTcp && props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
+        bool dsTcpServer =
+            dsTcp && props::asString(c->propOr("tcpRole", std::string("客户端"))) == "服务端";
+        // 目标(host/remotePort) 仅客户端使用；本地端口(localPort) 仅服务端使用
+        bool dsUseTarget = dsTcp ? !dsTcpServer : dsUdpClient;
+        bool dsUseLocalPort = dsTcp ? dsTcpServer : !dsUdpClient;
         bool protoTlv =
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
             if (isDs) {
                 if (spec.key == "protocol") continue; // 动态下拉（候选为协议组件名）
-                if (spec.key == "localPort" && dsTcp) continue;
+                // 按传输方式与客户端/服务端只显示相关项，避免误配：
+                // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort
+                if (spec.key == "udpRole" && dsTcp) continue;  // 仅 UDP
+                if (spec.key == "tcpRole" && !dsTcp) continue; // 仅 TCP
+                if ((spec.key == "host" || spec.key == "remotePort") && !dsUseTarget) continue;
+                if (spec.key == "localPort" && !dsUseLocalPort) continue;
             }
             if (isProto) { // 拆帧项按模式互斥显示，避免误配
                 bool tlvItem = spec.key == "tagBytes" || spec.key == "lenBytes" ||
