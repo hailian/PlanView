@@ -47,36 +47,54 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         return;
     }
 
-    float w = ImGui::GetFontSize();
+    // 表格式行编辑：列头作标签、控件填满列宽，避免行内控件互相挤压截断
+    int cols = tlv ? 5 : 4;
+    if (!ImGui::BeginTable("pfields", cols, ImGuiTableFlags_SizingStretchProp |
+                                             ImGuiTableFlags_RowBg))
+        return;
+    ImGui::TableSetupColumn("字段名", ImGuiTableColumnFlags_WidthStretch, 2.2f);
+    if (tlv)
+        ImGui::TableSetupColumn("槽位", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+    ImGui::TableSetupColumn("偏移", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+    ImGui::TableSetupColumn("类型", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+    ImGui::TableSetupColumn("标签地址", ImGuiTableColumnFlags_WidthStretch, 1.1f);
+    ImGui::TableHeadersRow();
+
     for (int i = 0; i < count; ++i) {
         std::string p = "f" + std::to_string(i) + ".";
         ImGui::PushID(i);
-        ImGui::SetNextItemWidth(w * 4.0f);
+        ImGui::TableNextRow();
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
         std::string name = props::asString(c.propOr(p + "name", std::string("?")));
         if (ImGui::InputText("##n", &name)) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("字段名");
             c.setProp(p + "name", name);
         }
-        ImGui::SameLine();
+
         if (tlv) {
-            ImGui::SetNextItemWidth(w * 1.8f);
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-1);
             int64_t tagId = props::asInt(c.propOr(p + "tagId", int64_t(0)));
             int v = (int)tagId;
-            if (ImGui::InputInt("槽位##t", &v, 0, 0)) {
+            if (ImGui::InputInt("##t", &v, 0, 0)) {
                 if (ImGui::IsItemActivated()) ctx.doc.commit("字段槽位");
                 c.setProp(p + "tagId", int64_t(std::clamp(v, 0, 255)));
             }
-            ImGui::SameLine();
         }
-        ImGui::SetNextItemWidth(w * 1.8f);
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
         int64_t offset = props::asInt(c.propOr(p + "offset", int64_t(0)));
         int v = (int)offset;
-        if (ImGui::InputInt("偏移##o", &v, 0, 0)) {
+        if (ImGui::InputInt("##o", &v, 0, 0)) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("字段偏移");
             c.setProp(p + "offset", int64_t(std::clamp(v, 0, 4096)));
         }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(w * 2.2f);
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
         std::string typeName = props::asString(c.propOr(p + "type", std::string("u16")));
         if (ImGui::BeginCombo("##ty", typeName.c_str())) {
             for (int k = 0; k < kFieldTypeCount; ++k) {
@@ -89,16 +107,18 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
             }
             ImGui::EndCombo();
         }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(w * 1.8f);
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
         int64_t addr = props::asInt(c.propOr(p + "address", int64_t(0)));
         int a = (int)addr;
-        if (ImGui::InputInt("地址##a", &a, 0, 0)) {
+        if (ImGui::InputInt("##a", &a, 0, 0)) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("字段标签地址");
             c.setProp(p + "address", int64_t(std::clamp(a, 0, 65535)));
         }
         ImGui::PopID();
     }
+    ImGui::EndTable();
 }
 
 // 数据源组件的「关联协议」动态下拉：候选 = 工程内全部协议配置组件名（跨页）
