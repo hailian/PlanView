@@ -147,6 +147,58 @@ void drawCanvas(PlannerContext& ctx) {
     for (const auto& c : page->components)
         ComponentRenderer::drawComponent(dl, c, rc, view.offset, view.zoom);
 
+    // ---- 数据源 -> 协议配置 关联曲线（品牌蓝实线 + 端点圆点） ----
+    // 核心链路可视化：不受「关联弧线」开关控制，建立关联即显示。
+    // 端点取「朝向对方的最近边」的中点（左右/上下按主导轴判定），曲线不穿卡片。
+    // 按名称匹配，跨页时不画——卡片上的「协议: 名字」仍然可见
+    for (const auto& c : page->components) {
+        if (c.typeId != "DataSource") continue;
+        std::string protoName = props::asString(c.propOr("protocol", std::string()));
+        if (protoName.empty()) continue;
+        const Component* pc = nullptr;
+        for (const auto& c2 : page->components)
+            if (c2.typeId == "ProtocolConfig" && c2.name == protoName) {
+                pc = &c2;
+                break;
+            }
+        if (!pc) continue;
+
+        // 最近边的中点：按两卡中心差的主导轴取 左/右 或 上/下 边中点，外扩留缝
+        auto edgeMidpoint = [](const ScreenRect& r, ImVec2 toward, float gap) {
+            ImVec2 ctr = r.center();
+            float dx = toward.x - ctr.x, dy = toward.y - ctr.y;
+            if (std::fabs(dx) >= std::fabs(dy))
+                return dx >= 0.0f ? ImVec2(r.Max.x + gap, ctr.y) : ImVec2(r.Min.x - gap, ctr.y);
+            return dy >= 0.0f ? ImVec2(ctr.x, r.Max.y + gap) : ImVec2(ctr.x, r.Min.y - gap);
+        };
+
+        ScreenRect rc1(view.toScreen(c.frame.pos()),
+                       view.toScreen(ImVec2(c.frame.x + c.frame.w, c.frame.y + c.frame.h)));
+        ScreenRect rc2(view.toScreen(pc->frame.pos()),
+                       view.toScreen(ImVec2(pc->frame.x + pc->frame.w, pc->frame.y + pc->frame.h)));
+        ImVec2 p1 = edgeMidpoint(rc1, rc2.center(), 3.0f);
+        ImVec2 p2 = edgeMidpoint(rc2, rc1.center(), 3.0f);
+        // 控制臂沿主导轴，曲线整体走势与两卡相对方位一致
+        ImVec2 axis(fabsf(rc2.center().x - rc1.center().x) >= fabsf(rc2.center().y - rc1.center().y)
+                        ? (rc2.center().x >= rc1.center().x ? 1.0f : -1.0f)
+                        : 0.0f,
+                    fabsf(rc2.center().x - rc1.center().x) >= fabsf(rc2.center().y - rc1.center().y)
+                        ? 0.0f
+                        : (rc2.center().y >= rc1.center().y ? 1.0f : -1.0f));
+        ImVec2 mid1(p1.x + axis.x * 70.0f, p1.y + axis.y * 70.0f);
+        ImVec2 mid2(p2.x - axis.x * 70.0f, p2.y - axis.y * 70.0f);
+        ImU32 col = IM_COL32(96, 165, 250, 220);
+        dl->AddBezierCubic(p1, mid1, mid2, p2, col, 2.0f, 24);
+        dl->AddCircleFilled(p1, 4.0f, col, 10);   // 数据源端
+        dl->AddCircleFilled(p2, 5.0f, col, 10);   // 协议端（略大做"指向"感）
+        // 悬停提示
+        ImVec2 hover = ImGui::GetIO().MousePos;
+        float dx = hover.x - (p1.x + p2.x) * 0.5f;
+        float dy = hover.y - (p1.y + p2.y) * 0.5f;
+        if (dx * dx + dy * dy < 24.0f * 24.0f && ImGui::IsWindowHovered())
+            ImGui::SetTooltip("数据源 %s 使用协议: %s", c.name.c_str(), pc->name.c_str());
+    }
+
     // ---- 关联弧线叠加（联动: 源->目标贝塞尔曲线; 数据绑定: 组件角标圆点数） ----
     if (ctx.showArcs) {
         Project& proj = ctx.project();
