@@ -522,6 +522,7 @@ void ViewerApp::drawFrameMonitor() {
                 f.length = tf.bytes;
                 f.type = tf.type;
                 f.bigEndian = tf.bigEndian;
+                f.enums = tf.enums; // 枚举显示名称
                 pf.push_back(f);
             }
         }

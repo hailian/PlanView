@@ -10,12 +10,13 @@ const char* tagDataTypeName(TagDataType t) {
     case TagDataType::Int32: return "int32";
     case TagDataType::UInt32: return "uint32";
     case TagDataType::Float32: return "float32";
+    case TagDataType::String: return "string";
     }
     return "?";
 }
 
 std::optional<TagDataType> tagDataTypeFromName(std::string_view name) {
-    for (uint8_t i = 0; i <= (uint8_t)TagDataType::Float32; ++i) {
+    for (uint8_t i = 0; i <= (uint8_t)TagDataType::String; ++i) {
         TagDataType t = (TagDataType)i;
         if (name == tagDataTypeName(t)) return t;
     }

@@ -21,10 +21,11 @@ struct TagField {
     std::string name = "字段";               // 字段名（展示用）
     int tagId = 0;                           // TLV 槽位标识（帧 T 值）
     int offset = 0;                          // 字节偏移（含义见上）
-    packet::FieldType type = packet::FieldType::U16; // 数值类型（hex/ascii 不参与标签映射）
-    int bytes = 2;                           // 固定长度类型由类型决定
+    packet::FieldType type = packet::FieldType::U16; // 字段类型
+    int bytes = 2;                           // 固定类型由类型决定；string/enum 由长度属性
     bool bigEndian = true;                   // 多字节字节序
     int address = 0;                         // 标签槽位（Tag::address）
+    std::vector<std::pair<int64_t, std::string>> enums; // Enum：值 → 名称
 };
 
 struct FrameSourceSettings {

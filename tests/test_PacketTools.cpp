@@ -162,6 +162,52 @@ TEST_CASE("规约解析：整数/浮点/字节序/工程换算") {
     CHECK(parsed[4].rawText == "(越界)");
 }
 
+TEST_CASE("规约解析：布尔/字符串/枚举/双精度") {
+    PacketSpec spec;
+    PacketField f;
+    f.name = "开关";
+    f.offset = 0;
+    f.type = FieldType::Bool; // 1 字节
+    spec.fields.push_back(f);
+
+    f.name = "状态";
+    f.offset = 1;
+    f.type = FieldType::Enum;
+    f.length = 1;
+    f.bigEndian = true;
+    f.enums = {{0, "停止"}, {1, "运行"}, {2, "故障"}};
+    spec.fields.push_back(f);
+
+    f.name = "名称";
+    f.offset = 2;
+    f.type = FieldType::String;
+    f.length = 4; // 定长，尾部 0x00 填充
+    spec.fields.push_back(f);
+
+    f.name = "精度";
+    f.offset = 6;
+    f.type = FieldType::F64;
+    f.bigEndian = true;
+    spec.fields.push_back(f);
+
+    f.name = "未知枚举";
+    f.offset = 1;
+    f.type = FieldType::Enum;
+    f.length = 1;
+    f.enums = {{0, "停止"}}; // 值为 1 未命中 → 回退数值文本
+    spec.fields.push_back(f);
+
+    // 01 | 01 | 'O''K''!'00 | f64(1.5)=3F F8 00 00 00 00 00 00
+    auto payload = hex("01 01 4F 4B 21 00 3F F8 00 00 00 00 00 00");
+    auto parsed = parsePacket(spec.fields, payload);
+    REQUIRE(parsed.size() == 5);
+    CHECK(parsed[0].rawText == "true");
+    CHECK(parsed[1].rawText == "运行"); // 枚举命中 → 名称
+    CHECK(parsed[2].rawText == "OK!");  // 去尾部 NUL
+    CHECK(parsed[3].rawText == "1.5");  // f64
+    CHECK(parsed[4].rawText == "1");    // 未命中 → 数值
+}
+
 TEST_CASE("接入配置 JSON 保存/加载往返") {
     DebugConfig cfg;
     cfg.transport = Transport::Tcp;
@@ -182,6 +228,14 @@ TEST_CASE("接入配置 JSON 保存/加载往返") {
     f.offsetValue = -5.0;
     cfg.spec.fields.push_back(f);
 
+    PacketField fe;
+    fe.name = "模式";
+    fe.offset = 8;
+    fe.type = FieldType::Enum;
+    fe.length = 1;
+    fe.enums = {{0, "手动"}, {1, "自动"}};
+    cfg.spec.fields.push_back(fe);
+
     std::string err;
     const char* path = "out/test_debug_config.json";
     CHECK(debugcfg::save(path, cfg, err));
@@ -197,11 +251,18 @@ TEST_CASE("接入配置 JSON 保存/加载往返") {
     CHECK(loaded.framing.lenOffset == 2);
     CHECK(loaded.framing.lenIncludesAll == true);
     CHECK(loaded.spec.name == "设备规约");
-    CHECK(loaded.spec.fields.size() == 1);
+    REQUIRE(loaded.spec.fields.size() == 2);
     CHECK(loaded.spec.fields[0].type == FieldType::F32);
     CHECK(loaded.spec.fields[0].offset == 4);
     CHECK(loaded.spec.fields[0].scale == 0.01);
     CHECK(loaded.spec.fields[0].offsetValue == -5.0);
+    // 枚举类型 + 映射表往返
+    CHECK(loaded.spec.fields[1].type == FieldType::Enum);
+    CHECK(loaded.spec.fields[1].length == 1);
+    REQUIRE(loaded.spec.fields[1].enums.size() == 2);
+    CHECK(loaded.spec.fields[1].enums[0].second == "手动");
+    CHECK(loaded.spec.fields[1].enums[1].first == 1);
+    CHECK(loaded.spec.fields[1].enums[1].second == "自动");
 }
 
 TEST_CASE("UDP 回环：发送 + 接收 + 规约解析") {

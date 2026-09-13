@@ -584,3 +584,112 @@ TEST_CASE("帧数据源：TCP 服务端接入 → 解析 → 标签值") {
     src.disconnect();
     CHECK(!src.isConnected());
 }
+
+TEST_CASE("帧数据源：布尔/字符串/枚举字段 → 标签值") {
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = true;
+    cfg.localPort = 59350;
+    cfg.remotePort = 59350;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+
+    TagField f;
+    f.name = "开关";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::Bool;
+    f.bytes = 1;
+    f.address = 0;
+    cfg.fields.push_back(f);
+    f.name = "状态";
+    f.tagId = 2;
+    f.offset = 0;
+    f.type = packet::FieldType::Enum;
+    f.bytes = 1;
+    f.address = 1;
+    f.enums = {{0, "停止"}, {1, "运行"}};
+    cfg.fields.push_back(f);
+    f.enums.clear();
+    f.name = "名称";
+    f.tagId = 3;
+    f.offset = 0;
+    f.type = packet::FieldType::String;
+    f.bytes = 4;
+    f.address = 2;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    CHECK(src.connect(err));
+    CHECK(src.isConnected());
+
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err)); // 系统分配临时端口
+    sender.setRemote("127.0.0.1", 59350);
+    CHECK(sender.send(hex("01 00 01 01"), err));             // T=01 V=01 → 布尔真
+    CHECK(sender.send(hex("02 00 01 01"), err));             // T=02 V=01 → 枚举「运行」
+    CHECK(sender.send(hex("03 00 04 41 42 00 00"), err));    // T=03 V="AB\0\0"
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t0 = makeTag("开关", 0, TagDataType::Bool, 1.0);
+    Tag t1 = makeTag("状态", 1, TagDataType::String, 1.0);
+    Tag t2 = makeTag("名称", 2, TagDataType::String, 1.0);
+    std::vector<const Tag*> tags = {&t0, &t1, &t2};
+    auto results = src.readTags(tags);
+    REQUIRE(results.size() == 3);
+    CHECK(results[0].ok);
+    CHECK(std::get<bool>(results[0].value) == true);
+    CHECK(results[1].ok);
+    CHECK(std::get<std::string>(results[1].value) == "运行");
+    CHECK(results[2].ok);
+    CHECK(std::get<std::string>(results[2].value) == "AB"); // 去尾 NUL
+
+    sender.stop();
+    src.disconnect();
+}
+
+TEST_CASE("隐式绑定合成：布尔/枚举字段 → 标签类型") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    Component proto = ComponentRegistry::createComponent("ProtocolConfig", "proto-1");
+    proto.name = "协议A";
+    proto.setProp("fieldCount", int64_t(3));
+    proto.setProp("f0.name", std::string("开关"));
+    proto.setProp("f0.tagId", int64_t(1));
+    proto.setProp("f0.offset", int64_t(0));
+    proto.setProp("f0.type", std::string("bool"));
+    proto.setProp("f1.name", std::string("状态"));
+    proto.setProp("f1.tagId", int64_t(2));
+    proto.setProp("f1.offset", int64_t(1));
+    proto.setProp("f1.type", std::string("enum"));
+    proto.setProp("f1.len", int64_t(1));
+    proto.setProp("f1.enumCount", int64_t(2));
+    proto.setProp("f1.e0.v", int64_t(0));
+    proto.setProp("f1.e0.n", std::string("停"));
+    proto.setProp("f1.e1.v", int64_t(1));
+    proto.setProp("f1.e1.n", std::string("行"));
+    proto.setProp("f2.name", std::string("名称"));
+    proto.setProp("f2.tagId", int64_t(3));
+    proto.setProp("f2.offset", int64_t(2));
+    proto.setProp("f2.type", std::string("string"));
+    proto.setProp("f2.len", int64_t(4));
+    pg.components.push_back(proto);
+
+    Component lamp = ComponentRegistry::createComponent("Lamp", "lp-1");
+    lamp.setProp("bindField", std::string("协议A/开关"));
+    pg.components.push_back(lamp);
+    Component label = ComponentRegistry::createComponent("Label", "l-1");
+    label.setProp("bindField", std::string("协议A/状态"));
+    pg.components.push_back(label);
+    p.pages.push_back(std::move(pg));
+
+    synthesizeImplicitBindings(p);
+
+    const Tag* tb = p.tags.find("开关");
+    REQUIRE(tb != nullptr);
+    CHECK(tb->type == TagDataType::Bool); // 布尔字段 → 布尔标签
+    const Tag* ts = p.tags.find("状态");
+    REQUIRE(ts != nullptr);
+    CHECK(ts->type == TagDataType::String); // 枚举 → 字符串标签（名称文本）
+}

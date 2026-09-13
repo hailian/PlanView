@@ -28,18 +28,41 @@ uint64_t readUint(const uint8_t* p, int n, bool bigEndian) {
     return v;
 }
 
-// 按字段类型解出原始数值；hex/ascii 非数值返回 false
-bool fieldRawDouble(const TagField& f, const uint8_t* p, int avail, double& out) {
+// 按字段类型解出 TagValue；越界/不支持返回 false
+// 整数→int64_t、浮点→double、Bool→bool、String/Enum→std::string（枚举名或原数值文本）
+bool fieldValue(const TagField& f, const uint8_t* p, int avail, TagValue& out) {
     int bytes = packet::fieldTypeBytes(f.type);
-    if (bytes <= 0) return false;               // hex/ascii
+    if (f.type == packet::FieldType::String || f.type == packet::FieldType::Enum)
+        bytes = f.bytes; // 长度/宽度可配
+    if (bytes <= 0) return false;
     if (f.offset < 0 || (int64_t)f.offset + bytes > (int64_t)avail) return false;
     p += f.offset;
     switch (f.type) {
+    case packet::FieldType::Bool:
+        out = (p[0] != 0);
+        return true;
+    case packet::FieldType::String: {
+        int n = bytes; // 去尾部 0x00/0xFF 填充，保留原始字节（UTF-8 友好）
+        while (n > 0 && (p[n - 1] == 0x00 || p[n - 1] == 0xFF)) --n;
+        out = std::string((const char*)p, (size_t)n);
+        return true;
+    }
+    case packet::FieldType::Enum: {
+        uint64_t u = readUint(p, bytes, f.bigEndian);
+        if (const std::string* nm = packet::findEnumName(f.enums, (int64_t)u)) {
+            out = *nm;
+        } else {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%llu", (unsigned long long)u);
+            out = std::string(buf);
+        }
+        return true;
+    }
     case packet::FieldType::F32: {
         uint32_t u = (uint32_t)readUint(p, 4, f.bigEndian);
         float v;
         std::memcpy(&v, &u, 4);
-        out = v;
+        out = (double)v;
         return true;
     }
     case packet::FieldType::F64: {
@@ -49,16 +72,14 @@ bool fieldRawDouble(const TagField& f, const uint8_t* p, int avail, double& out)
         out = v;
         return true;
     }
-    default: {
+    default: { // 整数：有符号补码扩展，统一升为 int64_t
         uint64_t u = readUint(p, bytes, f.bigEndian);
         int bits = bytes * 8;
-        if (f.type == packet::FieldType::I8 || f.type == packet::FieldType::I16 ||
-            f.type == packet::FieldType::I32) {
-            if (bytes < 8 && (u & (1ULL << (bits - 1)))) u |= ~0ULL << bits;
-            out = (double)(int64_t)u;
-        } else {
-            out = (double)u;
-        }
+        if ((f.type == packet::FieldType::I8 || f.type == packet::FieldType::I16 ||
+             f.type == packet::FieldType::I32) &&
+            bytes < 8 && (u & (1ULL << (bits - 1))))
+            u |= ~0ULL << bits;
+        out = (int64_t)u;
         return true;
     }
     }
@@ -93,7 +114,7 @@ void FrameDataSource::disconnect() {
     udp_.stop();
     tcp_.disconnect();
     std::lock_guard<std::mutex> lock(mutex_);
-    latestRaw_.clear();
+    latestValue_.clear();
 }
 
 bool FrameDataSource::isConnected() const {
@@ -132,9 +153,9 @@ void FrameDataSource::pumpFrames() {
             for (const auto& f : cfg_.fields) {
                 if (cfg_.framing.mode == packet::FrameMode::Tlv && f.tagId != tagId)
                     continue; // TLV：字段按槽位标识匹配帧
-                double raw = 0;
-                if (fieldRawDouble(f, payload, payloadLen, raw))
-                    latestRaw_[f.address] = raw; // 同槽位多字段：后到者覆盖
+                TagValue val;
+                if (fieldValue(f, payload, payloadLen, val))
+                    latestValue_[f.address] = std::move(val); // 同槽位多字段：后到者覆盖
             }
         }
         FrameLogEntry e;
@@ -157,20 +178,30 @@ std::vector<TagReadResult> FrameDataSource::readTags(const std::vector<const Tag
         TagReadResult& r = results[i];
         r.tag = t->name;
 
-        auto it = latestRaw_.find(t->address);
-        if (it == latestRaw_.end()) {
+        auto it = latestValue_.find(t->address);
+        if (it == latestValue_.end()) {
             r.ok = false;
             r.quality = TagQuality::Bad;
             r.error = "等待报文数据";
             continue;
         }
-        double eng = t->toEngineering(it->second);
-        if (t->type == TagDataType::Bool) {
-            r.value = eng != 0;
+        const TagValue& raw = it->second;
+        if (auto* s = std::get_if<std::string>(&raw)) {
+            r.value = *s; // 字符串/枚举名：直通
+        } else if (auto* b = std::get_if<bool>(&raw)) {
+            r.value = *b;
         } else {
-            r.value = (eng == std::floor(eng) && std::abs(eng) < 9.0e15)
-                          ? TagValue((int64_t)eng)
-                          : TagValue(eng);
+            double rawNum = 0;
+            if (auto* i = std::get_if<int64_t>(&raw)) rawNum = (double)*i;
+            else if (auto* d = std::get_if<double>(&raw)) rawNum = *d;
+            double eng = t->toEngineering(rawNum); // 数值走工程换算
+            if (t->type == TagDataType::Bool) {
+                r.value = eng != 0;
+            } else {
+                r.value = (eng == std::floor(eng) && std::abs(eng) < 9.0e15)
+                              ? TagValue((int64_t)eng)
+                              : TagValue(eng);
+            }
         }
         r.ok = true;
         r.quality = TagQuality::Good;

@@ -3,6 +3,7 @@
 #include "base/model/Project.h"
 #include "base/packet/HexUtil.h"
 
+#include <algorithm>
 #include <map>
 
 namespace softg {
@@ -57,8 +58,24 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
         std::string typeName = props::asString(c.propOr(prefix + "type", std::string("u16")));
         if (!packet::fieldTypeFromString(typeName, f.type))
             f.type = packet::FieldType::U16;
-        if (int n = packet::fieldTypeBytes(f.type)) f.bytes = n;
+        if (int n = packet::fieldTypeBytes(f.type)) {
+            f.bytes = n; // 固定长度类型由类型决定
+        } else if (f.type == packet::FieldType::String) {
+            f.bytes = (int)std::clamp<int64_t>(props::asInt(c.propOr(prefix + "len", int64_t(16))),
+                                               1, 256);
+        } else if (f.type == packet::FieldType::Enum) {
+            int64_t w = props::asInt(c.propOr(prefix + "len", int64_t(1)));
+            f.bytes = (w == 2 || w == 4) ? (int)w : 1; // 枚举宽度限 1/2/4 字节
+        }
         f.bigEndian = props::asBool(c.propOr(prefix + "bigEndian", true));
+        if (f.type == packet::FieldType::Enum) { // 枚举映射表 e<j>.v/.n
+            int64_t n = props::asInt(c.propOr(prefix + "enumCount", int64_t(0)));
+            for (int64_t j = 0; j < n; ++j) {
+                std::string ep = prefix + "e" + std::to_string(j) + ".";
+                f.enums.emplace_back(props::asInt(c.propOr(ep + "v", int64_t(0))),
+                                     props::asString(c.propOr(ep + "n", std::string())));
+            }
+        }
         f.address = (int)i; // 标签槽位 = 字段序号（自动分配；不再人工配置）
         fields.push_back(std::move(f));
     }
@@ -156,6 +173,9 @@ void synthesizeImplicitBindings(Project& p) {
                 case packet::FieldType::U32: nt.type = TagDataType::UInt32; break;
                 case packet::FieldType::F32: case packet::FieldType::F64:
                     nt.type = TagDataType::Float32; break;
+                case packet::FieldType::Bool: nt.type = TagDataType::Bool; break;
+                case packet::FieldType::String: case packet::FieldType::Enum:
+                    nt.type = TagDataType::String; break; // 文本/枚举名标签
                 default: nt.type = TagDataType::UInt16; break; // u8/u16/i8 升宽
                 }
                 nt.scale = 1.0; // 组件直接绑字段：换算在字段类型/协议侧，不做二次缩放

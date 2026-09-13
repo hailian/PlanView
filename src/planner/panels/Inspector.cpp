@@ -12,8 +12,71 @@ namespace softg::planner::panels {
 namespace {
 
 // 规约字段类型候选（与 packet::FieldType 的可映射子集）
-const char* kFieldTypes[] = {"u8", "i8", "u16", "i16", "u32", "i32", "f32", "f64"};
-const int kFieldTypeCount = 8;
+const char* kFieldTypes[] = {"u8",  "i8",   "u16",  "i16", "u32", "i32",
+                             "f32", "f64",  "bool", "string", "enum"};
+const int kFieldTypeCount = 11;
+
+// 枚举字段编辑弹窗：字节宽度(1/2/4) + 值→名称行（存 f<i>.len / enumCount / e<j>.v|n）
+void drawEnumEditor(Component& c, PlannerContext& ctx, const std::string& p) {
+    int64_t w = props::asInt(c.propOr(p + "len", int64_t(1)));
+    int width = (w == 2 || w == 4) ? (int)w : 1;
+    ImGui::TextUnformatted("字节宽度");
+    const int widths[3] = {1, 2, 4};
+    for (int k = 0; k < 3; ++k) {
+        if (k) ImGui::SameLine();
+        bool sel = width == widths[k];
+        std::string lbl = std::to_string(widths[k]) + "B";
+        if (ImGui::RadioButton(lbl.c_str(), sel) && !sel) {
+            ctx.doc.commit("枚举宽度");
+            c.setProp(p + "len", int64_t(widths[k]));
+        }
+    }
+    ImGui::Separator();
+    int64_t count64 = props::asInt(c.propOr(p + "enumCount", int64_t(0)));
+    int count = (int)std::clamp<int64_t>(count64, 0, 64);
+    if (ImGui::Button("添加项")) {
+        ctx.doc.commit("添加枚举项");
+        std::string ep = p + "e" + std::to_string(count) + ".";
+        c.setProp(ep + "v", int64_t(count));
+        c.setProp(ep + "n", std::string("项" + std::to_string(count + 1)));
+        c.setProp(p + "enumCount", int64_t(count + 1));
+        ++count;
+    }
+    ImGui::SameLine();
+    if (count > 0 && ImGui::Button("删除末尾")) {
+        ctx.doc.commit("删除枚举项");
+        c.setProp(p + "enumCount", int64_t(count - 1));
+        --count;
+    }
+    if (count > 0 &&
+        ImGui::BeginTable("enums", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("值", ImGuiTableColumnFlags_WidthStretch, 0.8f);
+        ImGui::TableSetupColumn("名称", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        ImGui::TableHeadersRow();
+        for (int j = 0; j < count; ++j) {
+            std::string ep = p + "e" + std::to_string(j) + ".";
+            ImGui::PushID(j);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-1);
+            int64_t v = props::asInt(c.propOr(ep + "v", int64_t(0)));
+            int iv = (int)v;
+            if (ImGui::InputInt("##v", &iv, 0, 0)) {
+                if (ImGui::IsItemActivated()) ctx.doc.commit("枚举值");
+                c.setProp(ep + "v", int64_t(iv));
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-1);
+            std::string nm = props::asString(c.propOr(ep + "n", std::string()));
+            if (ImGui::InputText("##n", &nm)) {
+                if (ImGui::IsItemActivated()) ctx.doc.commit("枚举名称");
+                c.setProp(ep + "n", nm);
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+}
 
 // 协议配置组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
 void drawProtocolFields(Component& c, PlannerContext& ctx) {
@@ -49,15 +112,16 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
 
     // 表格式行编辑：列头作标签、控件填满列宽，避免行内控件互相挤压截断
     //（标签槽位由字段序号自动分配，不再编辑；隐式标签按槽位合成）
-    int cols = tlv ? 4 : 3;
+    int cols = tlv ? 5 : 4;
     if (!ImGui::BeginTable("pfields", cols, ImGuiTableFlags_SizingStretchProp |
                                              ImGuiTableFlags_RowBg))
         return;
-    ImGui::TableSetupColumn("字段名", ImGuiTableColumnFlags_WidthStretch, 2.4f);
+    ImGui::TableSetupColumn("字段名", ImGuiTableColumnFlags_WidthStretch, 2.2f);
     if (tlv)
-        ImGui::TableSetupColumn("槽位(hex)", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-    ImGui::TableSetupColumn("偏移", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("槽位(hex)", ImGuiTableColumnFlags_WidthStretch, 0.9f);
+    ImGui::TableSetupColumn("偏移", ImGuiTableColumnFlags_WidthStretch, 0.9f);
     ImGui::TableSetupColumn("类型", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+    ImGui::TableSetupColumn("长度/枚举", ImGuiTableColumnFlags_WidthStretch, 1.3f);
     ImGui::TableHeadersRow();
 
     for (int i = 0; i < count; ++i) {
@@ -113,6 +177,26 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
                 if (sel) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
+        }
+        // 类型可能刚被修改，重新读取以决定本列
+        typeName = props::asString(c.propOr(p + "type", std::string("u16")));
+
+        // 长度/枚举：字符串=长度（字节）；枚举=编辑映射；其它=空
+        ImGui::TableNextColumn();
+        if (typeName == "string") {
+            ImGui::SetNextItemWidth(-1);
+            int len = (int)props::asInt(c.propOr(p + "len", int64_t(16)));
+            if (ImGui::InputInt("##len", &len, 0, 0)) {
+                if (ImGui::IsItemActivated()) ctx.doc.commit("字段长度");
+                c.setProp(p + "len", int64_t(std::clamp(len, 1, 256)));
+            }
+        } else if (typeName == "enum") {
+            if (ImGui::Button("枚举…")) ImGui::OpenPopup("枚举映射");
+            ImGui::SetItemTooltip("编辑枚举映射（值 → 名称）与字节宽度");
+            if (ImGui::BeginPopup("枚举映射")) {
+                drawEnumEditor(c, ctx, p);
+                ImGui::EndPopup();
+            }
         }
         ImGui::PopID();
     }

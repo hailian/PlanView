@@ -125,11 +125,19 @@ static Json projectToJson(const Project& p) {
         jf["framing"] = std::move(jm);
         Json fields = Json::array();
         for (const auto& f : fr.fields) {
-            fields.push_back(Json{{"name", f.name},
-                                  {"tagId", f.tagId},
-                                  {"offset", f.offset},
-                                  {"type", packet::fieldTypeToString(f.type)},
-                                  {"bigEndian", f.bigEndian}});
+            Json jfield{{"name", f.name},
+                        {"tagId", f.tagId},
+                        {"offset", f.offset},
+                        {"type", packet::fieldTypeToString(f.type)},
+                        {"bigEndian", f.bigEndian},
+                        {"bytes", f.bytes}};
+            if (!f.enums.empty()) { // 枚举映射（仅 Enum 写入）
+                Json es = Json::array();
+                for (const auto& e : f.enums)
+                    es.push_back(Json{{"v", e.first}, {"n", e.second}});
+                jfield["enums"] = std::move(es);
+            }
+            fields.push_back(std::move(jfield));
         }
         jf["fields"] = std::move(fields);
         settings["frame"] = std::move(jf);
@@ -342,8 +350,14 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
                     std::string typeName = jfi.value("type", "u16");
                     if (!packet::fieldTypeFromString(typeName, tf.type))
                         tf.type = packet::FieldType::U16;
-                    if (int n = packet::fieldTypeBytes(tf.type)) tf.bytes = n;
+                    tf.bytes = jfi.value("bytes", tf.bytes);
+                    if (int n = packet::fieldTypeBytes(tf.type))
+                        tf.bytes = n; // 固定长度类型以类型为准
                     tf.bigEndian = jfi.value("bigEndian", true);
+                    if (jfi.contains("enums"))
+                        for (const auto& ej : jfi["enums"])
+                            tf.enums.emplace_back(ej.value("v", int64_t(0)),
+                                                  ej.value("n", std::string()));
                     tf.address = 0; // 槽位由字段序号自动分配（address 已废弃，读时忽略）
                     fr.fields.push_back(std::move(tf));
                 }

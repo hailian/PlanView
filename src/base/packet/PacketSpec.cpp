@@ -16,6 +16,9 @@ const char* fieldTypeToString(FieldType t) {
     case FieldType::I32: return "i32";
     case FieldType::F32: return "f32";
     case FieldType::F64: return "f64";
+    case FieldType::Bool: return "bool";
+    case FieldType::String: return "string";
+    case FieldType::Enum: return "enum";
     case FieldType::Hex: return "hex";
     case FieldType::Ascii: return "ascii";
     }
@@ -28,6 +31,8 @@ bool fieldTypeFromString(const std::string& s, FieldType& out) {
         {"u16", FieldType::U16}, {"i16", FieldType::I16},
         {"u32", FieldType::U32}, {"i32", FieldType::I32},
         {"f32", FieldType::F32}, {"f64", FieldType::F64},
+        {"bool", FieldType::Bool}, {"string", FieldType::String},
+        {"enum", FieldType::Enum},
         {"hex", FieldType::Hex}, {"ascii", FieldType::Ascii},
     };
     for (const auto& e : kMap)
@@ -41,7 +46,9 @@ int fieldTypeBytes(FieldType t) {
     case FieldType::U16: case FieldType::I16: return 2;
     case FieldType::U32: case FieldType::F32: return 4;
     case FieldType::F64: return 8;
-    case FieldType::Hex: case FieldType::Ascii: return 0; // 长度可配置
+    case FieldType::Bool: return 1;
+    case FieldType::String: case FieldType::Enum: return 0; // 长度/宽度可配
+    case FieldType::Hex: case FieldType::Ascii: return 0;   // 长度可配置
     }
     return 0;
 }
@@ -88,9 +95,9 @@ std::vector<ParsedField> parsePacket(const std::vector<PacketField>& fields,
         r.length = f.length;
         r.engText = r.rawText = r.rawHex = "";
 
-        int bytes = f.type == FieldType::Hex || f.type == FieldType::Ascii
-                        ? f.length
-                        : fieldTypeBytes(f.type);
+        bool varLen = f.type == FieldType::Hex || f.type == FieldType::Ascii ||
+                      f.type == FieldType::String || f.type == FieldType::Enum;
+        int bytes = varLen ? f.length : fieldTypeBytes(f.type);
         if (f.offset < 0 || f.length <= 0 || bytes <= 0 ||
             (int64_t)f.offset + bytes > (int64_t)payload.size()) {
             r.ok = false;
@@ -147,6 +154,30 @@ std::vector<ParsedField> parsePacket(const std::vector<PacketField>& fields,
             r.rawText = buf;
             formatDouble(v * f.scale + f.offsetValue, buf, sizeof(buf));
             r.engText = buf;
+            break;
+        }
+        case FieldType::Bool: {
+            bool v = p[0] != 0;
+            r.rawText = v ? "true" : "false";
+            r.engText = r.rawText;
+            break;
+        }
+        case FieldType::String: {
+            int n = bytes;  // 去尾部 0x00/0xFF 填充，保留原始字节（UTF-8 友好）
+            while (n > 0 && (p[n - 1] == 0x00 || p[n - 1] == 0xFF)) --n;
+            r.rawText.assign((const char*)p, (size_t)n);
+            r.engText = r.rawText;
+            break;
+        }
+        case FieldType::Enum: {
+            uint64_t v = f.bigEndian ? readUintBE(p, bytes) : readUintLE(p, bytes);
+            if (const std::string* nm = findEnumName(f.enums, (int64_t)v)) {
+                r.rawText = *nm;
+            } else {
+                std::snprintf(buf, sizeof(buf), "%llu", (unsigned long long)v);
+                r.rawText = buf;
+            }
+            r.engText = r.rawText;
             break;
         }
         case FieldType::Hex: {

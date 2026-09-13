@@ -50,7 +50,7 @@ private:
     packet::FrameSplitter splitter_{cfg_.framing};
 
     std::mutex mutex_;
-    std::map<int, double> latestRaw_;         // 标签槽位 → 最新原始值
+    std::map<int, TagValue> latestValue_;     // 标签槽位 → 最新解析值（数值/布尔/文本）
     std::deque<FrameLogEntry> frameLog_;
 };
 

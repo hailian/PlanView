@@ -144,7 +144,7 @@ TEST_CASE("文件保存与加载") {
 }
 
 TEST_CASE("TagDataType 名称往返") {
-    for (uint8_t i = 0; i <= (uint8_t)TagDataType::Float32; ++i) {
+    for (uint8_t i = 0; i <= (uint8_t)TagDataType::String; ++i) {
         TagDataType t = (TagDataType)i;
         auto back = tagDataTypeFromName(tagDataTypeName(t));
         REQUIRE(back.has_value());
