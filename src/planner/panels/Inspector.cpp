@@ -1,5 +1,6 @@
 #include "planner/panels/Inspector.h"
 
+#include "base/data/frame/FrameSourceSettings.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/PacketSpec.h"
 #include "imgui.h"
@@ -237,6 +238,40 @@ void commitOnEdit(const PropertySpec& spec, bool changed, PlannerContext& ctx) {
         ctx.doc.commit("属性 " + spec.label);
 }
 
+// 显示组件的「绑定协议字段」下拉：候选 = 工程内全部协议配置的字段。
+// 选择后存组件 bindField（"协议名/字段名"），运行器合成隐式标签+绑定直接驱动
+void drawFieldBinding(Component& c, PlannerContext& ctx) {
+    ImGui::Separator();
+    std::string cur = props::asString(c.propOr("bindField", std::string()));
+    const char* preview = cur.empty() ? "(不绑定)" : cur.c_str();
+    if (ImGui::BeginCombo("绑定协议字段", preview)) {
+        if (ImGui::Selectable("(不绑定)", cur.empty()) && !cur.empty()) {
+            ctx.doc.commit("取消绑定协议字段");
+            c.setProp("bindField", std::string());
+        }
+        packet::FramingConfig fr;
+        std::vector<TagField> fields;
+        for (const auto& pg : ctx.project().pages)
+            for (const auto& pc : pg.components) {
+                if (pc.typeId != "ProtocolConfig") continue;
+                protocolFramingFromComponent(pc, fr, fields);
+                for (const auto& f : fields) {
+                    // 存储格式 "协议名/字段名"（无空格；解析侧同时容忍带空格的历史数据）
+                    std::string item = pc.name + "/" + f.name;
+                    bool sel = item == cur;
+                    if (ImGui::Selectable(item.c_str(), sel) && !sel) {
+                        ctx.doc.commit("绑定协议字段");
+                        c.setProp("bindField", item);
+                    }
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+            }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(-> %s)", defaultBindableProperty(c));
+}
+
 } // namespace
 
 void drawInspector(PlannerContext& ctx) {
@@ -337,6 +372,8 @@ void drawInspector(PlannerContext& ctx) {
             drawProtocolSelector(*c, ctx); // 关联协议（动态候选）
         if (isProto)
             drawProtocolFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
+        if (!isDs && !isProto)
+            drawFieldBinding(*c, ctx); // 显示组件直接绑定协议字段
     } else {
         ImGui::TextColored(ImVec4(1, 0.6f, 0.6f, 1), "未注册类型: %s", c->typeId.c_str());
     }

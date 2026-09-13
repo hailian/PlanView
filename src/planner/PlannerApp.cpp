@@ -8,12 +8,10 @@
 #include "base/serialize/ProjectJson.h"
 #include "imgui.h"
 #include "imgui_internal.h"  // DockBuilder（布局初始化; ImGui 官方 demo 同款用法）
-#include "planner/panels/Associations.h"
 #include "planner/panels/Canvas.h"
 #include "planner/panels/Inspector.h"
 #include "planner/panels/Palette.h"
 #include "planner/panels/Pages.h"
-#include "planner/panels/Tags.h"
 #include "planner/panels/Validation.h"
 
 namespace softg::planner {
@@ -58,18 +56,13 @@ void PlannerApp::firstRunLayout(ImGuiID dockspaceId) {
 
     ImGuiID left, right, main;
     ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.18f, &left, &main);
-    ImGui::DockBuilderSplitNode(main, ImGuiDir_Right, 0.32f, &right, &main);
+    ImGui::DockBuilderSplitNode(main, ImGuiDir_Right, 0.30f, &right, &main);
 
     ImGui::DockBuilderDockWindow("组件面板", left);
     ImGui::DockBuilderDockWindow("页面", left);
     ImGui::DockBuilderDockWindow("画布", main);
     ImGui::DockBuilderDockWindow("属性", right);
-    // 右侧标签页组
-    ImGuiID rightTabs;
-    ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.55f, &rightTabs, &right);
-    ImGui::DockBuilderDockWindow("关联关系", right);
-    ImGui::DockBuilderDockWindow("标签库", right);
-    ImGui::DockBuilderDockWindow("校验", rightTabs);
+    ImGui::DockBuilderDockWindow("校验", right);
     ImGui::DockBuilderFinish(dockspaceId);
     layoutBuilt_ = true;
 }
@@ -89,8 +82,6 @@ bool PlannerApp::frame() {
     panels::drawPages(ctx_);
     panels::drawCanvas(ctx_);
     panels::drawInspector(ctx_);
-    panels::drawAssociations(ctx_);
-    panels::drawTags(ctx_);
     panels::drawValidation(ctx_);
     if (showPacketDebug_) panels::drawPacketDebug(packetDebug_);
     return !exit_;

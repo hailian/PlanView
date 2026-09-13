@@ -63,6 +63,8 @@ bool ViewerApp::openPath(const std::string& path) {
     }
     stopPolling();
     project_ = std::move(loaded);
+    // 组件 bindField（直接绑定协议字段）→ 合成隐式标签 + 数据绑定，再交引擎
+    synthesizeImplicitBindings(project_);
     engine_.rebind(project_);
     hasProject_ = true;
     currentPage_ = project_.pages.empty() ? PageId{} : project_.pages.front().id;

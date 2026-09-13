@@ -48,4 +48,12 @@ void protocolFramingFromComponent(const Component& proto, packet::FramingConfig&
 //（拆帧/字段）。无数据源组件时返回旧工程 settings.frame 或 disabled（走行协议）。
 FrameSourceSettings frameSettingsFromProject(const Project& p);
 
+// 组件直接绑定协议字段的属性名（"协议名/字段名" 存于组件 bindField 属性）
+const char* defaultBindableProperty(const Component& c);
+
+// 组件 bindField（"协议名/字段名"）→ 自动合成隐式标签（按字段槽位/类型）+
+// 数据绑定（组件默认属性 ← 标签），使组件直接由协议字段驱动，无需手工建标签库/关联。
+// 幂等：重复调用不重复创建；字段/协议不存在时跳过（校验面板负责提示）。
+void synthesizeImplicitBindings(Project& p);
+
 } // namespace softg

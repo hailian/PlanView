@@ -116,6 +116,43 @@ void drawValidation(PlannerContext& ctx) {
         }
     }
 
+    // 组件 bindField（直接绑定协议字段）引用检查
+    for (const auto& pg : p.pages)
+        for (const auto& c : pg.components) {
+            if (c.typeId == "DataSource" || c.typeId == "ProtocolConfig") continue;
+            std::string bf = props::asString(c.propOr("bindField", std::string()));
+            if (bf.empty()) continue;
+            size_t slash = bf.find('/');
+            if (slash == std::string::npos) {
+                issues.push_back({"组件字段绑定格式非法（应为 协议名/字段名）: " + bf, c.id,
+                                  true});
+                continue;
+            }
+            auto trim = [](const std::string& s) {
+                size_t b = s.find_first_not_of(" \t");
+                size_t e = s.find_last_not_of(" \t");
+                return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+            };
+            std::string protoName = trim(bf.substr(0, slash));
+            std::string fieldName = trim(bf.substr(slash + 1));
+            const Component* pc = nullptr;
+            for (const auto& pg2 : p.pages)
+                for (const auto& c2 : pg2.components)
+                    if (c2.typeId == "ProtocolConfig" && c2.name == protoName) pc = &c2;
+            if (!pc) {
+                issues.push_back({"组件绑定的协议不存在: " + protoName, c.id, true});
+                continue;
+            }
+            bool found = false;
+            for (int64_t i = 0;
+                 i < props::asInt(pc->propOr("fieldCount", int64_t(0))) && !found; ++i) {
+                std::string pfx = "f" + std::to_string(i) + ".";
+                found = props::asString(pc->propOr(pfx + "name", std::string())) == fieldName;
+            }
+            if (!found)
+                issues.push_back({"组件绑定的协议字段不存在: " + bf, c.id, true});
+        }
+
     if (issues.empty()) {
         ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1), "未发现问题 (%d 项关联, %d 个标签)",
                            (int)p.associations.size(), (int)p.tags.all().size());

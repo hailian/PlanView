@@ -231,6 +231,81 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     CHECK(d.fields.empty());
 }
 
+TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+
+    // 协议配置：1 字段（槽位 1，f32）
+    Component proto = ComponentRegistry::createComponent("ProtocolConfig", "proto-1");
+    proto.name = "温控协议";
+    proto.setProp("fieldCount", int64_t(1));
+    proto.setProp("f0.name", std::string("温度"));
+    proto.setProp("f0.tagId", int64_t(1));
+    proto.setProp("f0.offset", int64_t(0));
+    proto.setProp("f0.type", std::string("f32"));
+    proto.setProp("f0.address", int64_t(1));
+    p.pages[0].components.push_back(proto);
+
+    // 仪表与文本组件直接绑定协议字段
+    Component gauge = ComponentRegistry::createComponent("Gauge", "g-1");
+    gauge.setProp("bindField", std::string("温控协议/温度"));
+    p.pages[0].components.push_back(gauge);
+    Component label = ComponentRegistry::createComponent("Label", "l-1");
+    label.setProp("bindField", std::string("温控协议/温度"));
+    p.pages[0].components.push_back(label);
+    Component lamp = ComponentRegistry::createComponent("Lamp", "lp-1");
+    lamp.setProp("bindField", std::string("温控协议/不存在字段"));
+    p.pages[0].components.push_back(lamp);
+
+    synthesizeImplicitBindings(p);
+
+    // 隐式标签：1 个（槽位 1，float32，名字 = 字段名）
+    CHECK(p.tags.all().size() == 1);
+    const Tag* t = p.tags.find("温度");
+    REQUIRE(t != nullptr);
+    CHECK(t->address == 1);
+    CHECK(t->type == TagDataType::Float32);
+    CHECK(t->scale == 1.0);
+
+    // 绑定：gauge->value、label->text；lamp 字段不存在被跳过
+    CHECK(p.associations.size() == 2);
+    const DataBinding* bg = nullptr;
+    const DataBinding* bl = nullptr;
+    for (const auto& a : p.associations) {
+        if (auto* b = std::get_if<DataBinding>(&a)) {
+            if (b->component == "g-1") bg = b;
+            if (b->component == "l-1") bl = b;
+        }
+    }
+    REQUIRE(bg != nullptr);
+    CHECK(bg->property == "value");
+    CHECK(bg->tag == "温度");
+    REQUIRE(bl != nullptr);
+    CHECK(bl->property == "text");
+
+    // 幂等：重复合成不重复创建
+    synthesizeImplicitBindings(p);
+    CHECK(p.tags.all().size() == 1);
+    CHECK(p.associations.size() == 2);
+
+    // 默认绑定属性映射
+    CHECK(std::string(defaultBindableProperty(gauge)) == "value");
+    CHECK(std::string(defaultBindableProperty(label)) == "text");
+    CHECK(std::string(defaultBindableProperty(lamp)) == "isOn");
+
+    // 历史格式容忍："协议名 / 字段名"（斜杠带空格）同样可解析合成
+    p.pages[0].components[1].setProp("bindField", std::string(" 温控协议 / 温度 "));
+    p.associations.clear();
+    synthesizeImplicitBindings(p);
+    bool regen = false;
+    for (const auto& a : p.associations)
+        if (auto* b = std::get_if<DataBinding>(&a); b && b->component == "g-1")
+            regen = b->tag == "温度";
+    CHECK(regen);
+}
+
 TEST_CASE("帧数据源：断开后标签质量为不可用") {
     FrameSourceSettings cfg;
     cfg.udp = true;
