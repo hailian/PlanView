@@ -8,12 +8,20 @@ add_library(softg_base STATIC
     model/ComponentRegistry.cpp
     model/Tag.cpp
     model/TagDatabase.cpp
+    packet/FrameCodec.cpp
+    packet/HexUtil.cpp
+    packet/PacketSpec.cpp
+    packet/DebugConfig.cpp
+    packet/UdpLink.cpp
+    packet/TcpLink.cpp
     render/ComponentRenderer.cpp
     render/TextureCache.cpp
     render/widgets/Widgets.cpp
     serialize/JsonHelpers.cpp
     serialize/ProjectJson.cpp
     data/DataSourceManager.cpp
+    data/frame/FrameDataSource.cpp
+    data/frame/FrameSourceSettings.cpp
     data/tcp/SoftgProtocol.cpp
     data/tcp/TcpDataSource.cpp
     runtime/RuntimeEngine.cpp

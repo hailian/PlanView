@@ -1,0 +1,56 @@
+// FrameDataSource — 帧数据源组件：TCP/UDP 接入 + 自配置规约解析 + 标签槽位映射。
+// TCP 字节流按 TLV / 帧头+Length 拆帧；UDP 数据报天然成帧。
+// 推收结合：收包线程持续成帧并解析缓存；readTags 返回各标签槽位的最新解析值。
+// v1 只收不发（supportsWrite=false），写回走原 SoftG 行协议数据源。
+#pragma once
+
+#include <deque>
+#include <map>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include "base/data/IDataSource.h"
+#include "base/data/frame/FrameSourceSettings.h"
+#include "base/packet/TcpLink.h"
+#include "base/packet/UdpLink.h"
+
+namespace softg {
+
+class FrameDataSource : public IDataSource {
+public:
+    // 报文监视日志条目（收到的原始帧）
+    struct FrameLogEntry {
+        std::string timeText;             // HH:MM:SS
+        std::vector<uint8_t> data;
+    };
+
+    explicit FrameDataSource(FrameSourceSettings settings);
+    ~FrameDataSource() override;
+
+    bool connect(std::string& err) override;   // TCP: 连接远端；UDP: 绑定本地端口
+    void disconnect() override;
+    bool isConnected() const override;
+
+    // 返回各标签槽位最新解析值（工程换算按标签 scale/offset）；无数据 = Bad
+    std::vector<TagReadResult> readTags(const std::vector<const Tag*>& tags) override;
+    bool writeTag(const Tag& tag, TagValue value, std::string& err) override;
+    bool supportsWrite() const override { return false; }
+
+    // 报文监视：取走最近的原始帧（worker 线程调用后转发给 UI）
+    void drainFrameLog(std::deque<FrameLogEntry>& out);
+
+private:
+    void pumpFrames();  // 收包队列 → 拆帧 → 规约解析 → 缓存 + 日志（worker 线程调用）
+
+    FrameSourceSettings cfg_;
+    packet::UdpLink udp_;
+    packet::TcpLink tcp_;
+    packet::FrameSplitter splitter_{cfg_.framing};
+
+    std::mutex mutex_;
+    std::map<int, double> latestRaw_;         // 标签槽位 → 最新原始值
+    std::deque<FrameLogEntry> frameLog_;
+};
+
+} // namespace softg

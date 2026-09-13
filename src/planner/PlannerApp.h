@@ -3,7 +3,7 @@
 
 #include "base/appshell/AppShell.h"
 #include "planner/PlannerContext.h"
-
+#include "planner/panels/PacketDebug.h"
 namespace softg::planner {
 
 class PlannerApp {
@@ -30,6 +30,9 @@ private:
     bool layoutBuilt_ = false;
     bool viewInited_ = false;         // 首帧按 DPI 设置画布默认缩放
     bool exit_ = false;
+
+    panels::PacketDebugState packetDebug_;  // 报文调试（工具菜单开关）
+    bool showPacketDebug_ = false;
 };
 
 } // namespace softg::planner

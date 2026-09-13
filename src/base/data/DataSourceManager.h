@@ -6,6 +6,7 @@
 #include <string>
 
 #include "base/data/IDataSource.h"
+#include "base/data/frame/FrameSourceSettings.h"
 
 namespace softg {
 
@@ -19,6 +20,7 @@ public:
     DataSourceManager& operator=(const DataSourceManager&) = delete;
 
     std::unique_ptr<IDataSource> createTcp(const TcpSettings& settings);
+    std::unique_ptr<IDataSource> createFrame(const FrameSourceSettings& settings);
 
 private:
     bool wsaOk_ = false;

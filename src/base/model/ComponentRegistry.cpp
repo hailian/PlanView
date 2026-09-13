@@ -140,6 +140,27 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         };
         t.push_back(std::move(i));
     }
+    { // 数据源（通信组件：拖到画布即启用，运行器按其配置收报文驱动标签；
+      // 规约字段列表由 Inspector 自定义区编辑，存储为 f<i>.* 索引属性）
+        ComponentTypeInfo i{"DataSource", "数据源", "通信", {170, 84}, {}};
+        i.properties = {
+            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP"}),
+            specString("host", "主机/目标IP", "127.0.0.1"),
+            specInt("remotePort", "远端端口", 9001, 1, 65535),
+            specInt("localPort", "UDP本地端口", 9001, 1, 65535),
+            specEnum("framingMode", "拆帧模式", "TLV", {"TLV", "帧头+Length"}),
+            specInt("tagBytes", "T字节数(TLV)", 1, 1, 4),
+            specInt("lenBytes", "L字节数(TLV)", 2, 1, 4),
+            specBool("bigEndian", "大端(TLV)", true),
+            specBool("lenIncludesHeader", "L含帧头(TLV)", false),
+            specString("headerHex", "帧头HEX", "AA 55"),
+            specInt("lenOffset", "length偏移", 2, 0, 64),
+            specInt("lenBytesHeader", "length字节数", 2, 1, 4),
+            specBool("bigEndianHeader", "大端(length)", true),
+            specBool("lenIncludesAll", "length为整帧长", false),
+        };
+        t.push_back(std::move(i));
+    }
     return t;
 }
 

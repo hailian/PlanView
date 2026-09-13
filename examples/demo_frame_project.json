@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "name": "帧数据源演示工程",
+  "nextId": 20,
+  "settings": {
+    "tcp": {
+      "host": "127.0.0.1",
+      "port": 9000,
+      "pollMs": 200
+    }
+  },
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "主画面",
+      "size": [900, 500],
+      "background": "#1E1E2EFF",
+      "components": [
+        {
+          "id": "comp-9", "type": "DataSource", "name": "UDP数据源",
+          "x": 60, "y": 380, "w": 200, "h": 84, "z": -1,
+          "properties": {
+            "transport": "UDP", "host": "127.0.0.1", "remotePort": 9001, "localPort": 9001,
+            "framingMode": "TLV", "tagBytes": 1, "lenBytes": 2, "bigEndian": true,
+            "lenIncludesHeader": false, "headerHex": "AA 55", "lenOffset": 2,
+            "lenBytesHeader": 2, "bigEndianHeader": true, "lenIncludesAll": false,
+            "fieldCount": 3,
+            "f0.name": "温度", "f0.tagId": 1, "f0.offset": 0, "f0.type": "u16", "f0.bigEndian": true, "f0.address": 1,
+            "f1.name": "泵", "f1.tagId": 2, "f1.offset": 0, "f1.type": "u8", "f1.bigEndian": true, "f1.address": 2,
+            "f2.name": "液位", "f2.tagId": 3, "f2.offset": 0, "f2.type": "f32", "f2.bigEndian": true, "f2.address": 3
+          }
+        },
+        {
+          "id": "comp-1", "type": "Gauge", "name": "温度",
+          "x": 60, "y": 60, "w": 200, "h": 200, "z": 0,
+          "properties": { "min": 0.0, "max": 30.0, "unit": " ℃", "majorTicks": 6 }
+        },
+        {
+          "id": "comp-2", "type": "Lamp", "name": "泵运行",
+          "x": 320, "y": 80, "w": 48, "h": 48, "z": 1,
+          "properties": {}
+        },
+        {
+          "id": "comp-3", "type": "Label", "name": "泵状态文字",
+          "x": 384, "y": 88, "w": 120, "h": 32, "z": 2,
+          "properties": { "text": "泵状态", "fontSize": 18, "align": "左" }
+        },
+        {
+          "id": "comp-4", "type": "Label", "name": "液位显示",
+          "x": 320, "y": 180, "w": 200, "h": 48, "z": 3,
+          "properties": { "text": "--", "fontSize": 30, "align": "左" }
+        },
+        {
+          "id": "comp-5", "type": "Label", "name": "液位标题",
+          "x": 320, "y": 148, "w": 120, "h": 28, "z": 4,
+          "properties": { "text": "液位", "fontSize": 16, "align": "左" }
+        }
+      ]
+    }
+  ],
+  "tags": [
+    { "name": "Temp", "type": "float32", "address": 1, "scale": 0.1, "offset": 0.0, "comment": "温度(u16*0.1)" },
+    { "name": "Pump", "type": "bool", "address": 2, "scale": 1.0, "offset": 0.0, "comment": "泵运行方波" },
+    { "name": "Level", "type": "float32", "address": 3, "scale": 1.0, "offset": 0.0, "comment": "液位(f32随机游走)" }
+  ],
+  "associations": [
+    { "kind": "dataBinding", "id": "a-1", "component": "comp-1", "property": "value", "tag": "Temp" },
+    { "kind": "dataBinding", "id": "a-2", "component": "comp-2", "property": "isOn", "tag": "Pump" },
+    { "kind": "dataBinding", "id": "a-3", "component": "comp-4", "property": "text", "tag": "Level" }
+  ]
+}

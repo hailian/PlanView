@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "base/data/frame/FrameSourceSettings.h"
 #include "base/model/Association.h"
 #include "base/model/Page.h"
 #include "base/model/TagDatabase.h"
@@ -22,7 +23,8 @@ struct TcpSettings {
 };
 
 struct ProjectSettings {
-    TcpSettings tcp;
+    TcpSettings tcp;             // SoftG 行文本协议数据源
+    FrameSourceSettings frame;   // 帧数据源（TCP/UDP + 拆帧 + 规约解析）；enabled 时优先
 };
 
 struct Project {
@@ -77,6 +79,20 @@ struct Project {
     const Page* findPageOfComponent(const ComponentId& id) const {
         for (const auto& p : pages)
             if (p.find(id)) return &p;
+        return nullptr;
+    }
+
+    // 按类型取第一个组件（页序 + 组件序）；数据源组件等全局唯一型组件用
+    Component* findComponentByType(std::string_view typeId) {
+        for (auto& pg : pages)
+            for (auto& c : pg.components)
+                if (c.typeId == typeId) return &c;
+        return nullptr;
+    }
+    const Component* findComponentByType(std::string_view typeId) const {
+        for (const auto& pg : pages)
+            for (const auto& c : pg.components)
+                if (c.typeId == typeId) return &c;
         return nullptr;
     }
 };

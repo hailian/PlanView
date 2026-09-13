@@ -7,7 +7,7 @@
 
 namespace softg::viewer {
 
-void PollWorker::start(const TcpSettings& settings, const std::vector<Tag>& tags) {
+void PollWorker::start(const ProjectSettings& settings, const std::vector<Tag>& tags) {
     stop();
     settings_ = settings;
     tags_ = tags;
@@ -40,6 +40,14 @@ std::string PollWorker::lastError() {
     return lastError_;
 }
 
+void PollWorker::drainFrames(std::deque<FrameDataSource::FrameLogEntry>& out) {
+    std::lock_guard<std::mutex> g(m_);
+    while (!frameLog_.empty()) {
+        out.push_back(std::move(frameLog_.front()));
+        frameLog_.pop_front();
+    }
+}
+
 void PollWorker::pushResultLocked(std::vector<TagReadResult>&& results) {
     std::lock_guard<std::mutex> g(m_);
     // 上限保护：UI 卡顿时丢最旧的（每轮全量刷新，丢帧无害）
@@ -51,7 +59,15 @@ void PollWorker::pushResultLocked(std::vector<TagReadResult>&& results) {
 
 void PollWorker::run() {
     DataSourceManager mgr;
-    auto ds = mgr.createTcp(settings_);
+    // 数据源组件选择：帧数据源（TCP/UDP + 自配置规约）或 SoftG 行协议
+    std::unique_ptr<IDataSource> ds;
+    if (settings_.frame.enabled) {
+        ds = mgr.createFrame(settings_.frame);
+        frameSource_ = static_cast<FrameDataSource*>(ds.get());
+    } else {
+        ds = mgr.createTcp(settings_.tcp);
+        frameSource_ = nullptr;
+    }
 
     // worker 私有标签指针表（快照，不触碰 UI 侧对象）
     std::vector<const Tag*> tagPtrs;
@@ -85,7 +101,7 @@ void PollWorker::run() {
             connected_ = true;
         }
 
-        // 1) 处理写队列
+        // 1) 处理写队列（帧数据源只收不发：丢弃写请求，不影响连接状态）
         std::vector<std::pair<TagName, TagValue>> writes;
         {
             std::lock_guard<std::mutex> g(m_);
@@ -93,24 +109,42 @@ void PollWorker::run() {
                           std::make_move_iterator(writes_.end()));
             writes_.clear();
         }
-        bool writeFailed = false;
-        for (auto& [name, value] : writes) {
-            const Tag* t = nullptr;
-            for (const auto& tag : tags_)
-                if (tag.name == name) t = &tag;
-            if (!t) continue;
-            std::string err;
-            if (!ds->writeTag(*t, value, err)) {
-                SOFTG_LOG_WARN("写标签 %s 失败: %s", name.c_str(), err.c_str());
-                writeFailed = true;
-                std::lock_guard<std::mutex> g(m_);
-                lastError_ = err;
+        if (!ds->supportsWrite()) {
+            if (!writes.empty())
+                SOFTG_LOG_WARN("帧数据源不支持写回，丢弃 %d 条写请求", (int)writes.size());
+        } else {
+            bool writeFailed = false;
+            for (auto& [name, value] : writes) {
+                const Tag* t = nullptr;
+                for (const auto& tag : tags_)
+                    if (tag.name == name) t = &tag;
+                if (!t) continue;
+                std::string err;
+                if (!ds->writeTag(*t, value, err)) {
+                    SOFTG_LOG_WARN("写标签 %s 失败: %s", name.c_str(), err.c_str());
+                    writeFailed = true;
+                    std::lock_guard<std::mutex> g(m_);
+                    lastError_ = err;
+                }
+            }
+            if (writeFailed) {
+                ds->disconnect();
+                connected_ = false;
+                continue;
             }
         }
-        if (writeFailed) {
-            ds->disconnect();
-            connected_ = false;
-            continue;
+
+        // 1.5) 帧数据源：转发原始报文给 UI 监视
+        if (frameSource_) {
+            std::deque<FrameDataSource::FrameLogEntry> frames;
+            frameSource_->drainFrameLog(frames);
+            if (!frames.empty()) {
+                std::lock_guard<std::mutex> g(m_);
+                for (auto& f : frames) {
+                    frameLog_.push_back(std::move(f));
+                    if (frameLog_.size() > 200) frameLog_.pop_front();
+                }
+            }
         }
 
         // 2) 轮询读取
@@ -128,11 +162,12 @@ void PollWorker::run() {
         }
 
         // 3) 间隔（可中断 sleep）
-        for (int slept = 0; slept < settings_.pollMs && !stopFlag_; slept += 20)
+        for (int slept = 0; slept < settings_.tcp.pollMs && !stopFlag_; slept += 20)
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
     ds->disconnect();
+    frameSource_ = nullptr;
 }
 
 } // namespace softg::viewer

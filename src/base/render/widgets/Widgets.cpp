@@ -433,6 +433,46 @@ void drawImage(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     }
 }
 
+// ---- DataSource 数据源（通信组件信息卡：不参与交互，展示接入配置）----
+void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                    const RenderContext& ctx, float scale) {
+    (void)ctx;
+    float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+    ImU32 accent = kDefaultArc;
+
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    // 左侧通信竖条
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 4.0f * scale, r.Max.y - radius),
+                      accent, 2.0f * scale);
+
+    std::string transport = props::asString(c.propOr("transport", std::string("UDP")));
+    std::string host = props::asString(c.propOr("host", std::string("127.0.0.1")));
+    int64_t remotePort = props::asInt(c.propOr("remotePort", int64_t(9001)));
+    int64_t localPort = props::asInt(c.propOr("localPort", int64_t(9001)));
+    int64_t fieldCount = props::asInt(c.propOr("fieldCount", int64_t(0)));
+
+    float fs = 15.0f * scale;
+    dl->AddText(font(), fs, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
+                kDefaultTextFg, "数据源");
+    char line[128];
+    if (transport == "TCP")
+        std::snprintf(line, sizeof(line), "TCP %s:%lld", host.c_str(), (long long)remotePort);
+    else
+        std::snprintf(line, sizeof(line), "UDP :%lld -> %s:%lld", (long long)localPort,
+                      host.c_str(), (long long)remotePort);
+    dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
+                IM_COL32(160, 172, 192, 255), line);
+    std::snprintf(line, sizeof(line), "%s · %lld 字段",
+                  props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV"
+                      ? "TLV"
+                      : "帧头+Len",
+                  (long long)fieldCount);
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
+                IM_COL32(120, 132, 152, 255), line);
+}
+
 // ---- 未知类型占位 ----
 void drawUnknown(ImDrawList* dl, const ScreenRect& r, const Component& c, const RenderContext& ctx,
                  float scale) {

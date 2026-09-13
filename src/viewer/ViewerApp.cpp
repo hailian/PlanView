@@ -100,7 +100,11 @@ void ViewerApp::saveRecentPath(const std::string& path) {
 
 void ViewerApp::startPolling() {
     if (!hasProject_ || project_.tags.all().empty()) return;
-    worker_.start(project_.settings.tcp, project_.tags.all());
+    // 数据源组件（拖拽到画布的「数据源」）优先；无组件时回退工程级 settings.frame
+    //（旧工程），再由 PollWorker 按 enabled 决定是否走 SoftG 行协议
+    if (const Component* ds = project_.findComponentByType("DataSource"))
+        project_.settings.frame = frameSettingsFromComponent(*ds);
+    worker_.start(project_.settings, project_.tags.all());
 }
 
 void ViewerApp::stopPolling() { worker_.stop(); }
@@ -161,9 +165,10 @@ bool ViewerApp::frame() {
     auto now = std::chrono::steady_clock::now();
     engine_.tick(now);
 
-    // 1) worker 读结果 -> 引擎
+    // 1) worker 读结果 -> 引擎；帧数据源报文 -> 监视缓存
     auto updates = worker_.drainResults();
     if (!updates.empty()) engine_.applyTagUpdates(updates);
+    worker_.drainFrames(frameLog_);
 
     // 2) 页面渲染 + 交互
     drawMainUi();
@@ -185,6 +190,10 @@ void ViewerApp::drawMainUi() {
         if (ImGui::Button("打开")) openProjectDialog();
         ImGui::SameLine();
         if (ImGui::Button("连接设置")) showConnectDlg_ = true;
+        if (project_.settings.frame.enabled) {
+            ImGui::SameLine();
+            ImGui::Checkbox("报文监视", &showFrameMonitor_);
+        }
         ImGui::SameLine();
         ImGui::TextDisabled("缩放 %.0f%%  (滚轮/中键拖动)", viewZoom_ * 100.0f);
         ImGui::End();
@@ -219,6 +228,8 @@ void ViewerApp::drawMainUi() {
     ImGui::End();
 
     drawStatusBar();
+
+    if (showFrameMonitor_) drawFrameMonitor();
 
     if (showDetail_) {
         if (const Component* c = project_.findComponent(detailComp_))
@@ -437,6 +448,108 @@ void ViewerApp::drawStatusBar() {
     if (!worker_.isConnected() && worker_.running()) {
         std::string err = worker_.lastError();
         if (!err.empty()) ImGui::TextDisabled("%s", err.c_str());
+    }
+    ImGui::End();
+}
+
+// ---- 报文监视（帧数据源）：原始帧 HEX + 按规约解析 ----
+
+void ViewerApp::drawFrameMonitor() {
+    if (!ImGui::Begin("报文监视", &showFrameMonitor_))
+        return ImGui::End();
+
+    if (frameLog_.empty())
+        ImGui::TextDisabled("(暂无报文)");
+
+    // 报文列表（子区域固定高度 + 自动滚底，避免解析表被推走）
+    ImGui::BeginChild("fmframes", ImVec2(0, ImGui::GetTextLineHeight() * 10),
+                      ImGuiChildFlags_Borders);
+    for (size_t i = 0; i < frameLog_.size(); ++i) {
+        const auto& e = frameLog_[i];
+        ImGui::PushID((int)i);
+        std::string preview;
+        for (size_t k = 0; k < e.data.size() && k < 12; ++k) {
+            char b[4];
+            std::snprintf(b, sizeof(b), "%02X", e.data[k]);
+            preview += (k ? " " : "") + std::string(b);
+        }
+        if (e.data.size() > 12) preview += " ...";
+        char line[512];
+        std::snprintf(line, sizeof(line), "%s  [%d] %zu 字节  %s", e.timeText.c_str(),
+                      (int)i, e.data.size(), preview.c_str());
+        bool selected = (int)i == selectedFrame_;
+        if (ImGui::Selectable(line, selected)) selectedFrame_ = (int)i;
+        ImGui::PopID();
+    }
+    if (selectedFrame_ < 0 && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 2)
+        ImGui::SetScrollHereY(1.0f);
+    ImGui::EndChild();
+
+    // 选中帧：HEX DUMP + 规约解析
+    if (!frameLog_.empty()) {
+        if (selectedFrame_ < 0 || selectedFrame_ >= (int)frameLog_.size())
+            selectedFrame_ = (int)frameLog_.size() - 1;
+        const auto& e = frameLog_[selectedFrame_];
+
+        ImGui::Separator();
+        ImGui::BeginChild("fmdump", ImVec2(0, ImGui::GetTextLineHeight() * 5),
+                          ImGuiChildFlags_Borders);
+        for (size_t base = 0; base < e.data.size(); base += 16) {
+            char text[256];
+            int n = std::snprintf(text, sizeof(text), "%04zX  ", base);
+            for (size_t k = 0; k < 16 && base + k < e.data.size(); ++k)
+                n += std::snprintf(text + n, sizeof(text) - n, "%02X ", e.data[base + k]);
+            ImGui::TextUnformatted(text);
+        }
+        ImGui::EndChild();
+
+        // 按工程规约解析：与数据源同语义——TLV 帧只列匹配槽位的字段（偏移相对负载），
+        // 帧头+Length 列全部字段（偏移相对整帧）
+        std::vector<packet::PacketField> pf;
+        int64_t tagId = -1;
+        const uint8_t* payload = nullptr;
+        int payloadLen = 0;
+        bool structured = packet::decodeFrameOnce(project_.settings.frame.framing, e.data,
+                                                  tagId, payload, payloadLen);
+        if (structured) {
+            for (const auto& tf : project_.settings.frame.fields) {
+                if (project_.settings.frame.framing.mode == packet::FrameMode::Tlv &&
+                    tf.tagId != tagId)
+                    continue;
+                packet::PacketField f;
+                f.name = tf.name + " (@" + std::to_string(tf.tagId) + ")";
+                f.offset = tf.offset;
+                f.length = tf.bytes;
+                f.type = tf.type;
+                f.bigEndian = tf.bigEndian;
+                pf.push_back(f);
+            }
+        }
+        std::vector<uint8_t> payloadVec(payload, payload + payloadLen);
+        auto parsed = packet::parsePacket(pf, structured ? payloadVec : e.data);
+        if (ImGui::BeginTable("fmparsed", 4,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("字段");
+            ImGui::TableSetupColumn("偏移");
+            ImGui::TableSetupColumn("原始HEX");
+            ImGui::TableSetupColumn("值");
+            ImGui::TableHeadersRow();
+            for (const auto& p : parsed) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(p.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%d", p.offset);
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(p.rawHex.c_str());
+                ImGui::TableNextColumn();
+                if (p.ok)
+                    ImGui::TextUnformatted(p.engText.c_str());
+                else
+                    ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", p.rawText.c_str());
+            }
+            ImGui::EndTable();
+        }
     }
     ImGui::End();
 }

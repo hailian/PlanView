@@ -1,5 +1,6 @@
 #include "base/data/DataSourceManager.h"
 
+#include "base/data/frame/FrameDataSource.h"
 #include "base/data/tcp/TcpDataSource.h"
 #include "base/log/Log.h"
 
@@ -20,6 +21,10 @@ DataSourceManager::~DataSourceManager() {
 
 std::unique_ptr<IDataSource> DataSourceManager::createTcp(const TcpSettings& settings) {
     return std::make_unique<tcp::TcpDataSource>(settings);
+}
+
+std::unique_ptr<IDataSource> DataSourceManager::createFrame(const FrameSourceSettings& settings) {
+    return std::make_unique<FrameDataSource>(settings);
 }
 
 } // namespace softg

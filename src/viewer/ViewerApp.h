@@ -3,10 +3,12 @@
 #pragma once
 
 #include <chrono>
+#include <deque>
 #include <map>
 #include <string>
 
 #include "base/appshell/AppShell.h"
+#include "base/data/frame/FrameDataSource.h"
 #include "base/render/TextureCache.h"
 #include "base/runtime/RuntimeEngine.h"
 #include "viewer/PollWorker.h"
@@ -70,6 +72,12 @@ private:
     // 组件详情弹窗
     bool showDetail_ = false;
     ComponentId detailComp_;
+
+    // 报文监视（帧数据源）
+    bool showFrameMonitor_ = false;
+    int selectedFrame_ = -1;   // -1 = 跟随最新一帧
+    std::deque<FrameDataSource::FrameLogEntry> frameLog_;
+    void drawFrameMonitor();
 
     // 交互状态
     std::map<ComponentId, std::chrono::steady_clock::time_point> pressedUntil_;  // 按钮按下反馈

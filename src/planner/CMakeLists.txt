@@ -6,6 +6,7 @@ add_executable(LogicPlanner
     Document.cpp
     panels/Palette.cpp
     panels/Pages.cpp
+    panels/PacketDebug.cpp
     panels/Canvas.cpp
     panels/Inspector.cpp
     panels/Associations.cpp

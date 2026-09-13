@@ -61,6 +61,22 @@ void drawValidation(PlannerContext& ctx) {
                               false});
     }
 
+    // 数据源组件全局唯一：多个时仅第一个生效（findComponentByType 语义）
+    {
+        int dsCount = 0;
+        const Component* firstDs = nullptr;
+        for (const auto& pg : p.pages)
+            for (const auto& c : pg.components)
+                if (c.typeId == "DataSource") {
+                    if (!firstDs) firstDs = &c;
+                    ++dsCount;
+                }
+        if (dsCount > 1)
+            issues.push_back({"数据源组件超过一个（仅第一个生效）: " +
+                                  std::to_string(dsCount) + " 个",
+                              firstDs ? firstDs->id : "", true});
+    }
+
     if (issues.empty()) {
         ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1), "未发现问题 (%d 项关联, %d 个标签)",
                            (int)p.associations.size(), (int)p.tags.all().size());

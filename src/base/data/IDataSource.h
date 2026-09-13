@@ -31,6 +31,9 @@ public:
 
     // 写单个标签（value 为工程值，内部换算原始值）
     virtual bool writeTag(const Tag& tag, TagValue value, std::string& err) = 0;
+
+    // 是否支持写回；不支持时 worker 丢弃写请求（不判定连接故障）
+    virtual bool supportsWrite() const { return true; }
 };
 
 } // namespace softg

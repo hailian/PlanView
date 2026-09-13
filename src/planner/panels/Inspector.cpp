@@ -1,6 +1,7 @@
 #include "planner/panels/Inspector.h"
 
 #include "base/model/ComponentRegistry.h"
+#include "base/packet/PacketSpec.h"
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include "planner/PlannerContext.h"
@@ -8,6 +9,97 @@
 namespace softg::planner::panels {
 
 namespace {
+
+// 规约字段类型候选（与 packet::FieldType 的可映射子集）
+const char* kFieldTypes[] = {"u8", "i8", "u16", "i16", "u32", "i32", "f32", "f64"};
+const int kFieldTypeCount = 8;
+
+// DataSource 组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
+void drawDataSourceFields(Component& c, PlannerContext& ctx) {
+    ImGui::Separator();
+    ImGui::TextUnformatted("规约字段（帧 -> 标签槽位）");
+    int64_t count64 = props::asInt(c.propOr("fieldCount", int64_t(0)));
+    int count = (int)std::clamp<int64_t>(count64, 0, 64);
+
+    if (ImGui::Button("添加字段")) {
+        ctx.doc.commit("添加规约字段");
+        std::string p = "f" + std::to_string(count) + ".";
+        c.setProp(p + "name", std::string("字段" + std::to_string(count + 1)));
+        c.setProp(p + "tagId", int64_t(count + 1));
+        c.setProp(p + "offset", int64_t(0));
+        c.setProp(p + "type", std::string("u16"));
+        c.setProp(p + "bigEndian", true);
+        c.setProp(p + "address", int64_t(count));
+        c.setProp("fieldCount", int64_t(count + 1));
+        ++count;
+    }
+    ImGui::SameLine();
+    if (count > 0 && ImGui::Button("删除末尾")) {
+        ctx.doc.commit("删除规约字段");
+        c.setProp("fieldCount", int64_t(count - 1));
+        --count;
+    }
+    bool tlv = props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV";
+    ImGui::TextDisabled("%s", tlv ? "TLV：字段按槽位(T)匹配帧，偏移相对该帧负载 V"
+                                  : "帧头+Length：偏移相对整帧首");
+    if (count == 0) {
+        ImGui::TextDisabled("  (无字段：运行器仍可收帧并监视，但不驱动任何标签)");
+        return;
+    }
+
+    float w = ImGui::GetFontSize();
+    for (int i = 0; i < count; ++i) {
+        std::string p = "f" + std::to_string(i) + ".";
+        ImGui::PushID(i);
+        ImGui::SetNextItemWidth(w * 4.0f);
+        std::string name = props::asString(c.propOr(p + "name", std::string("?")));
+        if (ImGui::InputText("##n", &name)) {
+            if (ImGui::IsItemActivated()) ctx.doc.commit("字段名");
+            c.setProp(p + "name", name);
+        }
+        ImGui::SameLine();
+        if (tlv) {
+            ImGui::SetNextItemWidth(w * 1.8f);
+            int64_t tagId = props::asInt(c.propOr(p + "tagId", int64_t(0)));
+            int v = (int)tagId;
+            if (ImGui::InputInt("槽位##t", &v, 0, 0)) {
+                if (ImGui::IsItemActivated()) ctx.doc.commit("字段槽位");
+                c.setProp(p + "tagId", int64_t(std::clamp(v, 0, 255)));
+            }
+            ImGui::SameLine();
+        }
+        ImGui::SetNextItemWidth(w * 1.8f);
+        int64_t offset = props::asInt(c.propOr(p + "offset", int64_t(0)));
+        int v = (int)offset;
+        if (ImGui::InputInt("偏移##o", &v, 0, 0)) {
+            if (ImGui::IsItemActivated()) ctx.doc.commit("字段偏移");
+            c.setProp(p + "offset", int64_t(std::clamp(v, 0, 4096)));
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(w * 2.2f);
+        std::string typeName = props::asString(c.propOr(p + "type", std::string("u16")));
+        if (ImGui::BeginCombo("##ty", typeName.c_str())) {
+            for (int k = 0; k < kFieldTypeCount; ++k) {
+                bool sel = typeName == kFieldTypes[k];
+                if (ImGui::Selectable(kFieldTypes[k], sel) && !sel) {
+                    ctx.doc.commit("字段类型");
+                    c.setProp(p + "type", std::string(kFieldTypes[k]));
+                }
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(w * 1.8f);
+        int64_t addr = props::asInt(c.propOr(p + "address", int64_t(0)));
+        int a = (int)addr;
+        if (ImGui::InputInt("地址##a", &a, 0, 0)) {
+            if (ImGui::IsItemActivated()) ctx.doc.commit("字段标签地址");
+            c.setProp(p + "address", int64_t(std::clamp(a, 0, 65535)));
+        }
+        ImGui::PopID();
+    }
+}
 
 // 按 PropertySpec 生成单个类型化编辑器；返回是否有变更
 bool editProperty(const PropertySpec& spec, PropertyValue& value) {
@@ -23,11 +115,12 @@ bool editProperty(const PropertySpec& spec, PropertyValue& value) {
         break;
     }
     case PropertyType::Int: {
+        // 直接键入的编辑框（无步进按钮）；越界输入按 spec 范围拉回
         int64_t v = props::asInt(value);
         int i = (int)std::clamp<int64_t>(v, INT_MIN, INT_MAX);
-        if (ImGui::DragInt(spec.label.c_str(), &i, 1.0f,
-                           spec.minValue ? (int)*spec.minValue : 0,
-                           spec.maxValue ? (int)*spec.maxValue : 0)) {
+        if (ImGui::InputInt(spec.label.c_str(), &i, 0, 0)) {
+            if (spec.minValue) i = std::max(i, (int)*spec.minValue);
+            if (spec.maxValue) i = std::min(i, (int)*spec.maxValue);
             value = (int64_t)i;
             changed = true;
         }
@@ -174,11 +267,27 @@ void drawInspector(PlannerContext& ctx) {
     ImGui::TextUnformatted("组件属性");
     if (info) {
         for (const auto& spec : info->properties) {
+            // 数据源组件的 TCP 拆帧项仅在对应模式下有意义，切换显示避免误配
+            if (c->typeId == "DataSource") {
+                bool tlv = props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
+                bool isTlvItem = spec.key == "tagBytes" || spec.key == "lenBytes" ||
+                                 spec.key == "bigEndian" || spec.key == "lenIncludesHeader";
+                bool isHeaderItem = spec.key == "headerHex" || spec.key == "lenOffset" ||
+                                    spec.key == "lenBytesHeader" || spec.key == "bigEndianHeader" ||
+                                    spec.key == "lenIncludesAll";
+                if (isTlvItem && !tlv) continue;
+                if (isHeaderItem && tlv) continue;
+                if (spec.key == "localPort" &&
+                    props::asString(c->propOr("transport", std::string("UDP"))) == "TCP")
+                    continue; // 本地端口仅 UDP 使用
+            }
             PropertyValue v = c->propOr(spec.key, spec.defaultValue);
             bool changed = editProperty(spec, v);
             commitOnEdit(spec, changed, ctx);
             if (changed) c->setProp(spec.key, v);
         }
+        if (c->typeId == "DataSource")
+            drawDataSourceFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
     } else {
         ImGui::TextColored(ImVec4(1, 0.6f, 0.6f, 1), "未注册类型: %s", c->typeId.c_str());
     }

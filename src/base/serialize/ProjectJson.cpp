@@ -3,6 +3,7 @@
 #include <fstream>
 
 #include "base/model/ComponentRegistry.h"
+#include "base/packet/HexUtil.h"
 #include "base/serialize/JsonHelpers.h"
 
 namespace softg::projio {
@@ -100,6 +101,38 @@ static Json projectToJson(const Project& p) {
     tcp["port"] = p.settings.tcp.port;
     tcp["pollMs"] = p.settings.tcp.pollMs;
     settings["tcp"] = std::move(tcp);
+    if (p.settings.frame.enabled) { // 帧数据源：仅启用时写入（缺省字段向后兼容旧工程）
+        const FrameSourceSettings& fr = p.settings.frame;
+        Json jf;
+        jf["udp"] = fr.udp;
+        jf["host"] = fr.host;
+        jf["remotePort"] = fr.remotePort;
+        jf["localPort"] = fr.localPort;
+        Json jm;
+        jm["mode"] = fr.framing.mode == packet::FrameMode::Tlv ? "tlv" : "headerLength";
+        jm["tagBytes"] = fr.framing.tagBytes;
+        jm["lenBytes"] = fr.framing.lenBytes;
+        jm["bigEndian"] = fr.framing.bigEndian;
+        jm["lenIncludesHeader"] = fr.framing.lenIncludesHeader;
+        jm["headerHex"] = packet::bytesToHex(fr.framing.header);
+        jm["lenOffset"] = fr.framing.lenOffset;
+        jm["lenBytesHeader"] = fr.framing.lenBytesHeader;
+        jm["bigEndianHeader"] = fr.framing.bigEndianHeader;
+        jm["lenIncludesAll"] = fr.framing.lenIncludesAll;
+        jm["maxFrameLen"] = fr.framing.maxFrameLen;
+        jf["framing"] = std::move(jm);
+        Json fields = Json::array();
+        for (const auto& f : fr.fields) {
+            fields.push_back(Json{{"name", f.name},
+                                  {"tagId", f.tagId},
+                                  {"offset", f.offset},
+                                  {"type", packet::fieldTypeToString(f.type)},
+                                  {"bigEndian", f.bigEndian},
+                                  {"address", f.address}});
+        }
+        jf["fields"] = std::move(fields);
+        settings["frame"] = std::move(jf);
+    }
     j["settings"] = std::move(settings);
 
     Json pages = Json::array();
@@ -265,6 +298,53 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
             p.settings.tcp.host = t.value("host", p.settings.tcp.host);
             p.settings.tcp.port = t.value("port", p.settings.tcp.port);
             p.settings.tcp.pollMs = t.value("pollMs", p.settings.tcp.pollMs);
+        }
+        if (s.contains("frame")) { // 帧数据源（可选；旧工程无此字段）
+            const Json& f = s["frame"];
+            FrameSourceSettings& fr = p.settings.frame;
+            fr.enabled = f.value("enabled", true); // 有 frame 段即视为启用
+            fr.udp = f.value("udp", fr.udp);
+            fr.host = f.value("host", fr.host);
+            fr.remotePort = f.value("remotePort", fr.remotePort);
+            fr.localPort = f.value("localPort", fr.localPort);
+            if (f.contains("framing")) {
+                const Json& m = f["framing"];
+                packet::FrameMode mode = m.value("mode", "tlv") == "tlv"
+                                             ? packet::FrameMode::Tlv
+                                             : packet::FrameMode::HeaderLength;
+                fr.framing.mode = mode;
+                fr.framing.tagBytes = m.value("tagBytes", fr.framing.tagBytes);
+                fr.framing.lenBytes = m.value("lenBytes", fr.framing.lenBytes);
+                fr.framing.bigEndian = m.value("bigEndian", fr.framing.bigEndian);
+                fr.framing.lenIncludesHeader =
+                    m.value("lenIncludesHeader", fr.framing.lenIncludesHeader);
+                std::vector<uint8_t> header;
+                std::string herr;
+                if (packet::hexToBytes(m.value("headerHex", "AA 55"), header, herr) &&
+                    !header.empty())
+                    fr.framing.header = header;
+                fr.framing.lenOffset = m.value("lenOffset", fr.framing.lenOffset);
+                fr.framing.lenBytesHeader = m.value("lenBytesHeader", fr.framing.lenBytesHeader);
+                fr.framing.bigEndianHeader = m.value("bigEndianHeader", fr.framing.bigEndianHeader);
+                fr.framing.lenIncludesAll = m.value("lenIncludesAll", fr.framing.lenIncludesAll);
+                fr.framing.maxFrameLen = m.value("maxFrameLen", fr.framing.maxFrameLen);
+            }
+            if (f.contains("fields")) {
+                fr.fields.clear();
+                for (const auto& jfi : f["fields"]) {
+                    TagField tf;
+                    tf.name = jfi.value("name", std::string("字段"));
+                    tf.tagId = jfi.value("tagId", 0);
+                    tf.offset = jfi.value("offset", 0);
+                    std::string typeName = jfi.value("type", "u16");
+                    if (!packet::fieldTypeFromString(typeName, tf.type))
+                        tf.type = packet::FieldType::U16;
+                    if (int n = packet::fieldTypeBytes(tf.type)) tf.bytes = n;
+                    tf.bigEndian = jfi.value("bigEndian", true);
+                    tf.address = jfi.value("address", 0);
+                    fr.fields.push_back(std::move(tf));
+                }
+            }
         }
     }
 

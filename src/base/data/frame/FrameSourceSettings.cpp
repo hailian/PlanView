@@ -1,0 +1,55 @@
+#include "base/data/frame/FrameSourceSettings.h"
+
+#include "base/model/Component.h"
+#include "base/packet/HexUtil.h"
+
+namespace softg {
+
+// 数据源组件（typeId == "DataSource"）属性 -> 帧数据源设置。
+// 规约字段存储为索引属性：fieldCount + f<i>.name / f<i>.tagId / f<i>.offset /
+// f<i>.type（类型名字符串）/ f<i>.bigEndian / f<i>.address
+FrameSourceSettings frameSettingsFromComponent(const Component& c) {
+    FrameSourceSettings s;
+    s.enabled = true; // 组件存在即启用
+    s.udp = props::asString(c.propOr("transport", std::string("UDP"))) != "TCP";
+    s.host = props::asString(c.propOr("host", s.host));
+    s.remotePort = (int)props::asInt(c.propOr("remotePort", int64_t(s.remotePort)));
+    s.localPort = (int)props::asInt(c.propOr("localPort", int64_t(s.localPort)));
+
+    packet::FramingConfig& fr = s.framing;
+    bool headerLenMode =
+        props::asString(c.propOr("framingMode", std::string("TLV"))) != "TLV";
+    fr.mode = headerLenMode ? packet::FrameMode::HeaderLength : packet::FrameMode::Tlv;
+    fr.tagBytes = (int)props::asInt(c.propOr("tagBytes", int64_t(fr.tagBytes)));
+    fr.lenBytes = (int)props::asInt(c.propOr("lenBytes", int64_t(fr.lenBytes)));
+    fr.bigEndian = props::asBool(c.propOr("bigEndian", fr.bigEndian));
+    fr.lenIncludesHeader = props::asBool(c.propOr("lenIncludesHeader", false));
+    std::string headerHex = props::asString(c.propOr("headerHex", std::string("AA 55")));
+    std::vector<uint8_t> header;
+    std::string err;
+    if (packet::hexToBytes(headerHex, header, err) && !header.empty())
+        fr.header = header;
+    fr.lenOffset = (int)props::asInt(c.propOr("lenOffset", int64_t(fr.lenOffset)));
+    fr.lenBytesHeader = (int)props::asInt(c.propOr("lenBytesHeader", int64_t(fr.lenBytesHeader)));
+    fr.bigEndianHeader = props::asBool(c.propOr("bigEndianHeader", fr.bigEndianHeader));
+    fr.lenIncludesAll = props::asBool(c.propOr("lenIncludesAll", false));
+
+    int64_t count = props::asInt(c.propOr("fieldCount", int64_t(0)));
+    for (int64_t i = 0; i < count; ++i) {
+        std::string prefix = "f" + std::to_string(i) + ".";
+        TagField f;
+        f.name = props::asString(c.propOr(prefix + "name", std::string("字段")));
+        f.tagId = (int)props::asInt(c.propOr(prefix + "tagId", int64_t(i + 1)));
+        f.offset = (int)props::asInt(c.propOr(prefix + "offset", int64_t(0)));
+        std::string typeName = props::asString(c.propOr(prefix + "type", std::string("u16")));
+        if (!packet::fieldTypeFromString(typeName, f.type))
+            f.type = packet::FieldType::U16;
+        if (int n = packet::fieldTypeBytes(f.type)) f.bytes = n;
+        f.bigEndian = props::asBool(c.propOr(prefix + "bigEndian", true));
+        f.address = (int)props::asInt(c.propOr(prefix + "address", int64_t(0)));
+        s.fields.push_back(std::move(f));
+    }
+    return s;
+}
+
+} // namespace softg
