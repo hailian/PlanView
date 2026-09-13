@@ -1,5 +1,6 @@
 #include "base/data/frame/FrameSourceSettings.h"
 
+#include "base/model/ComponentRegistry.h"
 #include "base/model/Project.h"
 #include "base/packet/HexUtil.h"
 
@@ -122,6 +123,62 @@ const char* defaultBindableProperty(const Component& c) {
     if (c.typeId == "Label") return "text";
     if (c.typeId == "Lamp" || c.typeId == "Switch") return "isOn";
     return "value";
+}
+
+std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
+                                                 const ComponentId& protoId, int& skipped) {
+    skipped = 0;
+    std::vector<ComponentId> created;
+
+    // ---- 先快照协议组件全部数据：后续 push_back 扩容会使组件引用失效 ----
+    const Component* proto = page.find(protoId);
+    if (!proto || proto->typeId != "ProtocolConfig") return created;
+    const std::string protoName = proto->name;
+    const float x0 = proto->frame.x;
+    const float y0 = proto->frame.y + proto->frame.h + 40.0f;
+    struct Spec {
+        std::string name, type;
+    };
+    std::vector<Spec> specs;
+    int64_t count = props::asInt(proto->propOr("fieldCount", int64_t(0)));
+    for (int64_t i = 0; i < count; ++i) {
+        std::string p = "f" + std::to_string(i) + ".";
+        specs.push_back({props::asString(proto->propOr(p + "name", std::string("?"))),
+                         props::asString(proto->propOr(p + "type", std::string("u16")))});
+    }
+
+    // 字段类型 → 组件类型（bool→灯；string/enum→文本；数值→仪表）
+    auto mapType = [](const std::string& t) -> const char* {
+        if (t == "bool") return "Lamp";
+        if (t == "string" || t == "enum") return "Label";
+        return "Gauge";
+    };
+
+    const float colW = 180.0f;
+    int col = 0;
+    for (const auto& sp : specs) {
+        const char* compType = mapType(sp.type);
+        std::string bind = protoName + "/" + sp.name;
+        bool exists = false;
+        for (const auto& ec : page.components)
+            if (ec.typeId == compType &&
+                props::asString(ec.propOr("bindField", std::string())) == bind)
+                exists = true;
+        if (exists) {
+            ++skipped;
+            continue;
+        }
+        Component nc = ComponentRegistry::createComponent(compType, proj.allocId("comp"));
+        nc.name = sp.name;
+        nc.frame.x = x0 + col * colW;
+        nc.frame.y = y0;
+        nc.z = page.components.empty() ? 0 : page.components.back().z + 1;
+        nc.setProp("bindField", bind);
+        page.components.push_back(std::move(nc));
+        created.push_back(page.components.back().id);
+        ++col;
+    }
+    return created;
 }
 
 void synthesizeImplicitBindings(Project& p) {

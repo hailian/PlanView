@@ -244,33 +244,64 @@ void drawAiProtoDialog(Component& c, PlannerContext& ctx) {
 
 // 协议配置组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
 void drawProtocolFields(Component& c, PlannerContext& ctx) {
+    // 指针 + 稳定 id：函数中段「生成字段组件」会 push_back 扩容使组件搬移，
+    // 生成后必须重新解析指针（引用无法重绑定），否则后续表格读写悬垂崩溃
+    Component* cp = &c;
+    ComponentId cId = cp->id;
     ImGui::Separator();
     ImGui::TextUnformatted("规约字段（帧 -> 标签槽位）");
-    int64_t count64 = props::asInt(c.propOr("fieldCount", int64_t(0)));
+    int64_t count64 = props::asInt(cp->propOr("fieldCount", int64_t(0)));
     int count = (int)std::clamp<int64_t>(count64, 0, 64);
 
     if (ImGui::Button("添加字段")) {
         ctx.doc.commit("添加规约字段");
         std::string p = "f" + std::to_string(count) + ".";
-        c.setProp(p + "name", std::string("字段" + std::to_string(count + 1)));
-        c.setProp(p + "tagId", int64_t(count + 1));
-        c.setProp(p + "offset", int64_t(0));
-        c.setProp(p + "type", std::string("u16"));
-        c.setProp(p + "bigEndian", true);
-        c.setProp("fieldCount", int64_t(count + 1));
+        cp->setProp(p + "name", std::string("字段" + std::to_string(count + 1)));
+        cp->setProp(p + "tagId", int64_t(count + 1));
+        cp->setProp(p + "offset", int64_t(0));
+        cp->setProp(p + "type", std::string("u16"));
+        cp->setProp(p + "bigEndian", true);
+        cp->setProp("fieldCount", int64_t(count + 1));
         ++count;
     }
     ImGui::SameLine();
     if (count > 0 && ImGui::Button("删除末尾")) {
         ctx.doc.commit("删除规约字段");
-        c.setProp("fieldCount", int64_t(count - 1));
+        cp->setProp("fieldCount", int64_t(count - 1));
         --count;
     }
     ImGui::SameLine();
     if (ImGui::Button("AI 配置规约…"))
         ImGui::OpenPopup("AI 配置规约");
-    drawAiProtoDialog(c, ctx);
-    bool tlv = props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV";
+    drawAiProtoDialog(*cp, ctx);
+    ImGui::SameLine();
+    // 一键生成规约字段的显示组件（数值→仪表、bool→灯、string/enum→文本，自动 bindField；
+    // 逻辑在 base：内部快照协议数据规避 push_back 扩容导致的引用失效崩溃）
+    static std::string genStatus;
+    {
+    if (ImGui::Button("生成字段组件") && count > 0) {
+        Page* page = ctx.currentPagePtr();
+        if (page) {
+            ctx.doc.commit("生成字段组件");
+            int skipped = 0;
+            auto ids = generateFieldComponents(*page, ctx.project(), cId, skipped);
+            cp = page->find(cId); // vector 已扩容搬移，重新解析
+            if (!cp) return;
+            for (const auto& id : ids)
+                ctx.selection.insert(id);
+            genStatus = "生成 " + std::to_string(ids.size()) + " 个组件（协议组件下方）";
+            if (skipped > 0)
+                genStatus += "，跳过 " + std::to_string(skipped) + " 个已绑定";
+            if (ids.empty())
+                ctx.doc.undo(); // 无变更回退空 commit，避免多余 undo 记录
+        }
+    }
+        if (!genStatus.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", genStatus.c_str());
+        }
+    }
+    bool tlv = props::asString(cp->propOr("framingMode", std::string("TLV"))) == "TLV";
     ImGui::TextDisabled("%s", tlv ? "TLV：字段按槽位(T)匹配帧，偏移相对该帧负载 V"
                                   : "帧头+Length：偏移相对负载（帧头 + length 字段之后）");
     if (count == 0) {
@@ -299,64 +330,64 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
 
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
-        std::string name = props::asString(c.propOr(p + "name", std::string("?")));
+        std::string name = props::asString(cp->propOr(p + "name", std::string("?")));
         if (ImGui::InputText("##n", &name)) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("字段名");
-            c.setProp(p + "name", name);
+            cp->setProp(p + "name", name);
         }
 
         if (tlv) {
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-1);
-            int64_t tagId = props::asInt(c.propOr(p + "tagId", int64_t(0)));
+            int64_t tagId = props::asInt(cp->propOr(p + "tagId", int64_t(0)));
             int v = (int)tagId;
             // 槽位 = TLV 帧 T 值（报文字节），十六进制输入/显示；
             // 取值上限随 T 字节数：1B→0xFF、2B→0xFFFF、3B→0xFFFFFF、4B→0xFFFFFFFF
             int64_t maxTagId = props::asInt(
-                c.propOr("tagBytes", int64_t(1)));
+                cp->propOr("tagBytes", int64_t(1)));
             maxTagId = (int64_t)1 << (int64_t)(8 * std::clamp<int64_t>(maxTagId, 1, 4));
             if (ImGui::InputInt("##t", &v, 0, 0, ImGuiInputTextFlags_CharsHexadecimal)) {
                 if (ImGui::IsItemActivated()) ctx.doc.commit("字段槽位");
                 uint32_t uv = (uint32_t)std::clamp<int64_t>(
                     (int64_t)v, 0, std::min<int64_t>(maxTagId - 1, 0xFFFFFFFF));
-                c.setProp(p + "tagId", int64_t(uv));
+                cp->setProp(p + "tagId", int64_t(uv));
             }
         }
 
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
-        int64_t offset = props::asInt(c.propOr(p + "offset", int64_t(0)));
+        int64_t offset = props::asInt(cp->propOr(p + "offset", int64_t(0)));
         int v = (int)offset;
         if (ImGui::InputInt("##o", &v, 0, 0)) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("字段偏移");
-            c.setProp(p + "offset", int64_t(std::clamp(v, 0, 4096)));
+            cp->setProp(p + "offset", int64_t(std::clamp(v, 0, 4096)));
         }
 
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
-        std::string typeName = props::asString(c.propOr(p + "type", std::string("u16")));
+        std::string typeName = props::asString(cp->propOr(p + "type", std::string("u16")));
         if (ImGui::BeginCombo("##ty", typeName.c_str())) {
             for (int k = 0; k < kFieldTypeCount; ++k) {
                 bool sel = typeName == kFieldTypes[k];
                 if (ImGui::Selectable(kFieldTypes[k], sel) && !sel) {
                     ctx.doc.commit("字段类型");
-                    c.setProp(p + "type", std::string(kFieldTypes[k]));
+                    cp->setProp(p + "type", std::string(kFieldTypes[k]));
                 }
                 if (sel) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
         // 类型可能刚被修改，重新读取以决定本列
-        typeName = props::asString(c.propOr(p + "type", std::string("u16")));
+        typeName = props::asString(cp->propOr(p + "type", std::string("u16")));
 
         // 长度/枚举：字符串=长度（字节）；枚举=编辑映射；其它=空
         ImGui::TableNextColumn();
         if (typeName == "string") {
             ImGui::SetNextItemWidth(-1);
-            int len = (int)props::asInt(c.propOr(p + "len", int64_t(16)));
+            int len = (int)props::asInt(cp->propOr(p + "len", int64_t(16)));
             if (ImGui::InputInt("##len", &len, 0, 0)) {
                 if (ImGui::IsItemActivated()) ctx.doc.commit("字段长度");
-                c.setProp(p + "len", int64_t(std::clamp(len, 1, 256)));
+                cp->setProp(p + "len", int64_t(std::clamp(len, 1, 256)));
             }
         } else if (typeName == "enum") {
             if (ImGui::Button("枚举…")) ImGui::OpenPopup("枚举映射");

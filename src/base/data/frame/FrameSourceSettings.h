@@ -12,6 +12,7 @@
 namespace softg {
 
 class Project; // 前向声明（Project.h 反向包含本文件，勿加完整定义）
+class Page;
 
 // 规约字段 → 标签槽位映射
 // 偏移语义随拆帧模式：
@@ -53,6 +54,13 @@ FrameSourceSettings frameSettingsFromProject(const Project& p);
 
 // 组件直接绑定协议字段的属性名（"协议名/字段名" 存于组件 bindField 属性）
 const char* defaultBindableProperty(const Component& c);
+
+// 一键生成规约字段的显示组件到页面：数值→仪表(Gauge/value)、bool→指示灯(Lamp/isOn)、
+// string/enum→文本(Label/text)，自动 bindField 绑定，网格排在协议组件下方（列距 180/行高 170）。
+// 同类型且已绑定同字段的组件跳过（skipped 返回跳过数）；返回新生成组件的 id 列表。
+// 内部先快照协议组件数据再循环——push_back 扩容会使引用失效，不得边扩容边读协议组件。
+std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
+                                                 const ComponentId& protoId, int& skipped);
 
 // 组件 bindField（"协议名/字段名"）→ 自动合成隐式标签（按字段槽位/类型）+
 // 数据绑定（组件默认属性 ← 标签），使组件直接由协议字段驱动，无需手工建标签库/关联。
