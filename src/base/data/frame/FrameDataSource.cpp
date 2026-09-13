@@ -102,6 +102,9 @@ FrameDataSource::~FrameDataSource() { disconnect(); }
 bool FrameDataSource::connect(std::string& err) {
     disconnect();
     splitter_.setConfig(cfg_.framing);
+    if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
+        return serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
+                            cfg_.stopBits, err);
     if (cfg_.udp) {
         if (cfg_.udpClient)
             return udp_.startClient(cfg_.host, cfg_.remotePort, err);
@@ -117,11 +120,13 @@ bool FrameDataSource::connect(std::string& err) {
 void FrameDataSource::disconnect() {
     udp_.stop();
     tcp_.disconnect();
+    serial_.close();
     std::lock_guard<std::mutex> lock(mutex_);
     latestValue_.clear();
 }
 
 bool FrameDataSource::isConnected() const {
+    if (cfg_.serial) return serial_.isOpen();
     return cfg_.udp ? udp_.isRunning() : tcp_.isConnected();
 }
 
@@ -133,6 +138,13 @@ void FrameDataSource::pumpFrames() {
         udp_.drain(in);
         while (!in.empty()) {
             frames.push_back(std::move(in.front().data));
+            in.pop_front();
+        }
+    } else if (cfg_.serial) { // 串口：字节流，与 TCP 同路拆帧
+        std::deque<packet::TcpChunk> in;
+        serial_.drain(in);
+        while (!in.empty()) {
+            splitter_.feed(in.front().data.data(), in.front().data.size(), frames);
             in.pop_front();
         }
     } else {

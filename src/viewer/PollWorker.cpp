@@ -59,7 +59,7 @@ void PollWorker::pushResultLocked(std::vector<TagReadResult>&& results) {
 
 void PollWorker::run() {
     DataSourceManager mgr;
-    // 数据源组件选择：帧数据源（TCP/UDP + 自配置规约）或 SoftG 行协议
+    // 数据源组件选择：帧数据源（TCP/UDP/串口 + 自配置规约）或 SoftG 行协议
     std::unique_ptr<IDataSource> ds;
     if (settings_.frame.enabled) {
         ds = mgr.createFrame(settings_.frame);

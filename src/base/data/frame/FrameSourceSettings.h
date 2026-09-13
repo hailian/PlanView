@@ -32,12 +32,20 @@ struct TagField {
 
 struct FrameSourceSettings {
     bool enabled = false;            // true=帧数据源；false=原 SoftG TCP 行协议
-    bool udp = false;                // true=UDP 数据报；false=TCP 字节流（需拆帧）
+    bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
+    bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
     bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)
     bool tcpClient = true;           // 仅 TCP：true=客户端(connect 远端)；false=服务端(listen 本地)
     std::string host = "127.0.0.1";  // TCP 客户端 / UDP 客户端连接目标
     int remotePort = 9001;           // TCP 客户端远端端口 / UDP 客户端目标端口
     int localPort = 9001;            // TCP 服务端监听端口 / UDP 服务端本地绑定端口
+
+    // 仅串口
+    std::string serialPort = "COM1"; // 串口名（"COM3" 或数字 "3"）
+    int baud = 9600;                 // 波特率
+    int dataBits = 8;                // 数据位 5..8
+    std::string parity = "无";       // 校验：无 / 奇 / 偶
+    int stopBits = 1;                // 停止位 1 / 2
 
     packet::FramingConfig framing;   // 仅 TCP 生效；UDP 天然成帧
 

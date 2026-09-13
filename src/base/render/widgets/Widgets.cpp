@@ -453,12 +453,21 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::string host = props::asString(c.propOr("host", std::string("127.0.0.1")));
     int64_t remotePort = props::asInt(c.propOr("remotePort", int64_t(9001)));
     int64_t localPort = props::asInt(c.propOr("localPort", int64_t(9001)));
+    std::string serialPort = props::asString(c.propOr("serialPort", std::string("COM1")));
+    int64_t baud = props::asInt(c.propOr("baud", int64_t(9600)));
+    int64_t dataBits = props::asInt(c.propOr("dataBits", int64_t(8)));
+    std::string parity = props::asString(c.propOr("parity", std::string("无")));
+    int64_t stopBits = props::asInt(c.propOr("stopBits", int64_t(1)));
     std::string protocol = props::asString(c.propOr("protocol", std::string()));
 
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
                 kDefaultTextFg, "数据源");
     char line[128];
-    if (transport == "TCP") {
+    if (transport == "串口") { // 参数行："COM3 115200-8-N-1"
+        std::snprintf(line, sizeof(line), "串口 %s %lld-%lld-%c-%lld", serialPort.c_str(),
+                      (long long)baud, (long long)dataBits,
+                      parity == "奇" ? 'O' : parity == "偶" ? 'E' : 'N', (long long)stopBits);
+    } else if (transport == "TCP") {
         if (tcpRole == "服务端")
             std::snprintf(line, sizeof(line), "TCP服务端 :%lld", (long long)localPort);
         else

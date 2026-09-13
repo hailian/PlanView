@@ -15,6 +15,7 @@ add_library(softg_base STATIC
     packet/DebugConfig.cpp
     packet/UdpLink.cpp
     packet/TcpLink.cpp
+    packet/SerialLink.cpp
     render/ComponentRenderer.cpp
     render/TextureCache.cpp
     render/widgets/Widgets.cpp

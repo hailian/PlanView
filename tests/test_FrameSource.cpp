@@ -7,6 +7,7 @@
 #include "base/data/frame/FrameDataSource.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/HexUtil.h"
+#include "base/packet/SerialLink.h"
 #include "base/packet/UdpLink.h"
 
 using namespace softg;
@@ -305,6 +306,57 @@ TEST_CASE("帧数据源：字段 scale 工程换算（协议侧）") {
 
     sender.stop();
     src.disconnect();
+}
+
+TEST_CASE("帧数据源：串口传输的工程级合成") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("transport", std::string("串口"));
+    ds.setProp("serialPort", std::string("COM7"));
+    ds.setProp("baud", int64_t(115200));
+    ds.setProp("dataBits", int64_t(8));
+    ds.setProp("parity", std::string("偶"));
+    ds.setProp("stopBits", int64_t(2));
+    ds.setProp("protocol", std::string("设备协议A"));
+    p.pages[0].components.push_back(ds);
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    CHECK(s.enabled);
+    CHECK(s.serial);       // 传输=串口
+    CHECK(!s.udp);         // 不再落入「非 TCP 即 UDP」
+    CHECK(s.serialPort == "COM7");
+    CHECK(s.baud == 115200);
+    CHECK(s.dataBits == 8);
+    CHECK(s.parity == "偶");
+    CHECK(s.stopBits == 2);
+
+    // 默认串口参数（未改属性）
+    Component fresh = ComponentRegistry::createComponent("DataSource", "ds-2");
+    fresh.setProp("transport", std::string("串口"));
+    p.pages[0].components.clear();
+    p.pages[0].components.push_back(fresh);
+    FrameSourceSettings d = frameSettingsFromProject(p);
+    CHECK(d.serial);
+    CHECK(d.serialPort == "COM1");
+    CHECK(d.baud == 9600);
+    CHECK(d.parity == "无");
+    CHECK(d.stopBits == 1);
+}
+
+TEST_CASE("串口链路：不存在端口打开失败 + 关闭幂等") {
+    packet::SerialLink ser;
+    std::string err;
+    CHECK(!ser.open("COM_不存在_", 9600, 8, "无", 1, err)); // 无此设备必然失败
+    CHECK(!err.empty());
+    CHECK(!ser.isOpen());
+    ser.close(); // 关闭未打开的串口不得崩溃
+    CHECK(!ser.isOpen());
+    std::deque<packet::TcpChunk> chunks;
+    ser.drain(chunks); // 未打开时 drain 为空
+    CHECK(chunks.empty());
 }
 
 TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {

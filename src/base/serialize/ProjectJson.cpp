@@ -105,11 +105,17 @@ static Json projectToJson(const Project& p) {
         const FrameSourceSettings& fr = p.settings.frame;
         Json jf;
         jf["udp"] = fr.udp;
+        jf["serial"] = fr.serial;
         jf["udpClient"] = fr.udpClient;
         jf["tcpClient"] = fr.tcpClient;
         jf["host"] = fr.host;
         jf["remotePort"] = fr.remotePort;
         jf["localPort"] = fr.localPort;
+        jf["serialPort"] = fr.serialPort; // 仅串口使用
+        jf["baud"] = fr.baud;
+        jf["dataBits"] = fr.dataBits;
+        jf["parity"] = fr.parity;
+        jf["stopBits"] = fr.stopBits;
         Json jm;
         jm["mode"] = fr.framing.mode == packet::FrameMode::Tlv ? "tlv" : "headerLength";
         jm["tagBytes"] = fr.framing.tagBytes;
@@ -130,6 +136,7 @@ static Json projectToJson(const Project& p) {
                         {"offset", f.offset},
                         {"type", packet::fieldTypeToString(f.type)},
                         {"bigEndian", f.bigEndian},
+                        {"scale", f.scale},
                         {"bytes", f.bytes}};
             if (!f.enums.empty()) { // 枚举映射（仅 Enum 写入）
                 Json es = Json::array();
@@ -313,11 +320,17 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
             FrameSourceSettings& fr = p.settings.frame;
             fr.enabled = f.value("enabled", true); // 有 frame 段即视为启用
             fr.udp = f.value("udp", fr.udp);
+            fr.serial = f.value("serial", false); // 旧工程无此字段 → 非 TCP 即 UDP
             fr.udpClient = f.value("udpClient", fr.udpClient);
             fr.tcpClient = f.value("tcpClient", fr.tcpClient);
             fr.host = f.value("host", fr.host);
             fr.remotePort = f.value("remotePort", fr.remotePort);
             fr.localPort = f.value("localPort", fr.localPort);
+            fr.serialPort = f.value("serialPort", fr.serialPort);
+            fr.baud = f.value("baud", fr.baud);
+            fr.dataBits = f.value("dataBits", fr.dataBits);
+            fr.parity = f.value("parity", fr.parity);
+            fr.stopBits = f.value("stopBits", fr.stopBits);
             if (f.contains("framing")) {
                 const Json& m = f["framing"];
                 packet::FrameMode mode = m.value("mode", "tlv") == "tlv"
@@ -354,6 +367,7 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
                     if (int n = packet::fieldTypeBytes(tf.type))
                         tf.bytes = n; // 固定长度类型以类型为准
                     tf.bigEndian = jfi.value("bigEndian", true);
+                    tf.scale = jfi.value("scale", 1.0); // 旧工程无此字段 → 不缩放
                     if (jfi.contains("enums"))
                         for (const auto& ej : jfi["enums"])
                             tf.enums.emplace_back(ej.value("v", int64_t(0)),

@@ -90,15 +90,22 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     if (!ds)
         return s; // enabled 维持工程设置（默认 false → SoftG 行协议）
 
-    // 传输来自数据源组件
+    // 传输来自数据源组件（TCP / UDP / 串口；串口独占一组属性，角色/端口项不适用）
     s.enabled = true; // 数据源组件存在即启用
-    s.udp = props::asString(ds->propOr("transport", std::string("UDP"))) != "TCP";
+    std::string transport = props::asString(ds->propOr("transport", std::string("UDP")));
+    s.udp = transport == "UDP";
+    s.serial = transport == "串口";
     s.udpClient = s.udp &&
                   props::asString(ds->propOr("udpRole", std::string("服务端"))) == "客户端";
     s.tcpClient = props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
     s.localPort = (int)props::asInt(ds->propOr("localPort", int64_t(s.localPort)));
+    s.serialPort = props::asString(ds->propOr("serialPort", s.serialPort));
+    s.baud = (int)props::asInt(ds->propOr("baud", int64_t(s.baud)));
+    s.dataBits = (int)props::asInt(ds->propOr("dataBits", int64_t(s.dataBits)));
+    s.parity = props::asString(ds->propOr("parity", s.parity));
+    s.stopBits = (int)props::asInt(ds->propOr("stopBits", int64_t(s.stopBits)));
 
     // 拆帧/字段来自关联的协议配置组件（按名称匹配；缺失时用默认 TLV 无字段）
     std::string protoName = props::asString(ds->propOr("protocol", std::string()));

@@ -144,7 +144,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
       // 拆帧与规约字段由「协议配置」组件提供，经 protocol 属性按名称关联）
         ComponentTypeInfo i{"DataSource", "数据源", "通信", {170, 84}, {}};
         i.properties = {
-            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP"}),
+            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口"}),
             // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端
             specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端"}),
             // TCP 角色：客户端=连接远端；服务端=监听本地端口等待设备接入
@@ -152,6 +152,12 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specString("host", "主机/目标IP", "127.0.0.1"),
             specInt("remotePort", "远端端口", 9001, 1, 65535),
             specInt("localPort", "本地监听端口", 9001, 1, 65535),
+            // 串口参数（仅传输=串口时显示）
+            specString("serialPort", "串口", "COM1"),
+            specInt("baud", "波特率", 9600, 300, 921600),
+            specInt("dataBits", "数据位", 8, 5, 8),
+            specEnum("parity", "校验", "无", {"无", "奇", "偶"}),
+            specInt("stopBits", "停止位", 1, 1, 2),
             specString("protocol", "关联协议", ""), // 协议配置组件名（Inspector 动态下拉）
         };
         t.push_back(std::move(i));
