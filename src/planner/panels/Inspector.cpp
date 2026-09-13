@@ -280,7 +280,7 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         ImGui::OpenPopup("AI 配置规约");
     drawAiProtoDialog(*cp, ctx);
     ImGui::SameLine();
-    // 一键生成规约字段的显示组件（数值→仪表、bool→灯、string/enum→文本，自动 bindField；
+    // 一键生成规约字段的显示组件（bool→灯、其余类型→文本，自动 bindField；
     // 逻辑在 base：内部快照协议数据规避 push_back 扩容导致的引用失效崩溃）
     static std::string genStatus;
     {

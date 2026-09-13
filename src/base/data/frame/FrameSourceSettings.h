@@ -64,8 +64,9 @@ FrameSourceSettings frameSettingsFromProject(const Project& p);
 // 组件直接绑定协议字段的属性名（"协议名/字段名" 存于组件 bindField 属性）
 const char* defaultBindableProperty(const Component& c);
 
-// 一键生成规约字段的显示组件到页面：数值→仪表(Gauge/value)、bool→指示灯(Lamp/isOn)、
-// string/enum→文本(Label/text)，自动 bindField 绑定，网格排在协议组件下方（列距 180/行高 170）。
+// 一键生成规约字段的显示组件到页面：bool→指示灯(Lamp/isOn)，其余类型（整数/浮点/
+// string/enum）一律文本(Label/text)——数值精度与名称类都更适合文本展示，仪表按需手工
+// 添加并绑定。自动 bindField 绑定，网格排在协议组件下方（列距 180/行高 170）。
 // 同类型且已绑定同字段的组件跳过（skipped 返回跳过数）；返回新生成组件的 id 列表。
 // 内部先快照协议组件数据再循环——push_back 扩容会使引用失效，不得边扩容边读协议组件。
 std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,

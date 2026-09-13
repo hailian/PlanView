@@ -155,11 +155,10 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
                          props::asString(proto->propOr(p + "type", std::string("u16")))});
     }
 
-    // 字段类型 → 组件类型（bool→灯；string/enum→文本；数值→仪表）
+    // 字段类型 → 组件类型：bool→指示灯；其余（整数/浮点/string/enum）一律文本——
+    // 数值精度与名称类都更适合文本展示，仪表按需手工添加并绑定
     auto mapType = [](const std::string& t) -> const char* {
-        if (t == "bool") return "Lamp";
-        if (t == "string" || t == "enum") return "Label";
-        return "Gauge";
+        return t == "bool" ? "Lamp" : "Label";
     };
 
     const float colW = 180.0f;

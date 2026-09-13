@@ -108,7 +108,7 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
 
     Component proto = ComponentRegistry::createComponent("ProtocolConfig", "pc-1");
     proto.name = "设备协议";
-    proto.setProp("fieldCount", int64_t(3));
+    proto.setProp("fieldCount", int64_t(5));
     proto.setProp("f0.name", std::string("设备1状态"));
     proto.setProp("f0.type", std::string("enum"));
     proto.setProp("f0.len", int64_t(1));
@@ -122,34 +122,46 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     proto.setProp("f2.name", std::string("设备1位置"));
     proto.setProp("f2.type", std::string("string"));
     proto.setProp("f2.len", int64_t(4));
+    proto.setProp("f3.name", std::string("设备1累计量"));
+    proto.setProp("f3.type", std::string("f64"));
+    proto.setProp("f4.name", std::string("设备1转速"));
+    proto.setProp("f4.type", std::string("u16"));
     p.pages[0].components.push_back(proto);
     ComponentId protoId = p.pages[0].components[0].id;
 
     int skipped = 0;
     auto ids = generateFieldComponents(p.pages[0], p, protoId, skipped);
     CHECK(skipped == 0);
-    REQUIRE(ids.size() == 3);
-    REQUIRE(p.pages[0].components.size() == 4);
+    REQUIRE(ids.size() == 5);
+    REQUIRE(p.pages[0].components.size() == 6);
 
-    // 类型映射：enum→Label、f32→Gauge、string→Label；bindField 自动绑定
+    // 类型映射：仅 bool→Lamp，其余（enum/string/f32/f64/整数）一律→Label；bindField 自动绑定
     const Component* c1 = p.pages[0].find(ids[0]);
     const Component* c2 = p.pages[0].find(ids[1]);
     const Component* c3 = p.pages[0].find(ids[2]);
+    const Component* c4 = p.pages[0].find(ids[3]);
+    const Component* c5 = p.pages[0].find(ids[4]);
     REQUIRE(c1 != nullptr);
     REQUIRE(c2 != nullptr);
     REQUIRE(c3 != nullptr);
+    REQUIRE(c4 != nullptr);
+    REQUIRE(c5 != nullptr);
     CHECK(c1->typeId == "Label");
     CHECK(c1->name == "设备1状态");
     CHECK(props::asString(c1->propOr("bindField", std::string())) == "设备协议/设备1状态");
-    CHECK(c2->typeId == "Gauge");
+    CHECK(c2->typeId == "Label"); // f32 浮点同样生成文本
     CHECK(props::asString(c2->propOr("bindField", std::string())) == "设备协议/设备1温度");
     CHECK(c3->typeId == "Label");
     CHECK(props::asString(c3->propOr("bindField", std::string())) == "设备协议/设备1位置");
+    CHECK(c4->typeId == "Label");
+    CHECK(props::asString(c4->propOr("bindField", std::string())) == "设备协议/设备1累计量");
+    CHECK(c5->typeId == "Label"); // 整数同样生成文本（仪表不再用于一键生成）
+    CHECK(props::asString(c5->propOr("bindField", std::string())) == "设备协议/设备1转速");
 
     // 协议组件数据在多次 push_back 后仍完好（快照实现下读回一致）
     const Component* pc = p.pages[0].find(protoId);
     REQUIRE(pc != nullptr);
-    CHECK(props::asInt(pc->propOr("fieldCount", int64_t(0))) == 3);
+    CHECK(props::asInt(pc->propOr("fieldCount", int64_t(0))) == 5);
     CHECK(props::asString(pc->propOr("f2.name", std::string())) == "设备1位置");
     CHECK(props::asString(pc->propOr("f0.e1.n", std::string())) == "开机");
 
@@ -157,6 +169,6 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     int skipped2 = 0;
     auto ids2 = generateFieldComponents(p.pages[0], p, protoId, skipped2);
     CHECK(ids2.empty());
-    CHECK(skipped2 == 3);
-    CHECK(p.pages[0].components.size() == 4);
+    CHECK(skipped2 == 5);
+    CHECK(p.pages[0].components.size() == 6);
 }
