@@ -25,6 +25,8 @@ add_library(softg_base STATIC
     data/frame/FrameSourceSettings.cpp
     data/tcp/SoftgProtocol.cpp
     data/tcp/TcpDataSource.cpp
+    llm/AiProto.cpp
+    llm/LlmClient.cpp
     runtime/RuntimeEngine.cpp
 )
 
@@ -41,6 +43,7 @@ target_link_libraries(softg_base PUBLIC
     d3d11
     dxgi
     ws2_32
+    winhttp
 )
 
 if(MSVC)

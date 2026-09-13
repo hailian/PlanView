@@ -1,11 +1,16 @@
 #include "planner/panels/Inspector.h"
 
 #include "base/data/frame/FrameSourceSettings.h"
+#include "base/llm/AiProto.h"
+#include "base/llm/LlmClient.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/PacketSpec.h"
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include "planner/PlannerContext.h"
+
+#include <atomic>
+#include <thread>
 
 namespace softg::planner::panels {
 
@@ -78,6 +83,165 @@ void drawEnumEditor(Component& c, PlannerContext& ctx, const std::string& p) {
     }
 }
 
+// 「AI 配置规约」弹窗状态（请求跨帧；模态弹窗保证选中组件不变）
+struct AiDialogState {
+    char input[4096] = "";
+    llm::LlmConfig cfg;
+    char baseUrlBuf[512] = "";
+    char apiKeyBuf[256] = "";
+    char modelBuf[64] = "";
+    bool cfgLoaded = false;
+    std::thread worker;
+    std::atomic<int> phase{0}; // 0=空闲 1=请求中 2=成功 3=失败
+    std::string response;
+    std::string error;
+    llm::AiProtoResult result;
+
+    ~AiDialogState() {
+        if (worker.joinable()) worker.join();
+    }
+};
+AiDialogState& aiDialog() {
+    static AiDialogState s;
+    return s;
+}
+
+void drawAiProtoDialog(Component& c, PlannerContext& ctx) {
+    AiDialogState& st = aiDialog();
+    if (!ImGui::BeginPopupModal("AI 配置规约", nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    // ---- LLM 设置（可折叠；首次打开加载本地配置） ----
+    if (!st.cfgLoaded) {
+        st.cfgLoaded = true;
+        llm::loadConfig(st.cfg);
+        snprintf(st.baseUrlBuf, sizeof(st.baseUrlBuf), "%s", st.cfg.baseUrl.c_str());
+        snprintf(st.apiKeyBuf, sizeof(st.apiKeyBuf), "%s", st.cfg.apiKey.c_str());
+        snprintf(st.modelBuf, sizeof(st.modelBuf), "%s", st.cfg.model.c_str());
+    }
+    if (ImGui::CollapsingHeader("LLM 设置")) {
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##url", st.baseUrlBuf, sizeof(st.baseUrlBuf));
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##key", st.apiKeyBuf, sizeof(st.apiKeyBuf),
+                         ImGuiInputTextFlags_Password);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##model", st.modelBuf, sizeof(st.modelBuf));
+        ImGui::TextDisabled("Base URL / API Key / 模型名（OpenAI 兼容接口）");
+        if (ImGui::Button("保存配置")) {
+            st.cfg.baseUrl = st.baseUrlBuf;
+            st.cfg.apiKey = st.apiKeyBuf;
+            st.cfg.model = st.modelBuf;
+            st.error = llm::saveConfig(st.cfg) ? "配置已保存（llm_config.json）"
+                                               : "配置保存失败（工作目录不可写）";
+            st.phase = 3; // 借错误行显示保存结果
+        }
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("规约文档 / 自然语言描述：");
+    ImGui::InputTextMultiline("##aiinput", st.input, sizeof(st.input),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8));
+    ImGui::TextDisabled("例：「帧头 AA 55，第 3 字节起 2 字节大端为温度，乘 0.1；随后 1 字节为泵状态」");
+
+    if (st.phase == 1) {
+        ImGui::TextDisabled("请求中...（最长约 60s）");
+    } else {
+        if (ImGui::Button("生成", ImVec2(120, 0)) && st.input[0] != '\0') {
+            if (st.worker.joinable()) st.worker.join();
+            st.cfg.baseUrl = st.baseUrlBuf;
+            st.cfg.apiKey = st.apiKeyBuf;
+            st.cfg.model = st.modelBuf;
+            st.response.clear();
+            st.error.clear();
+            st.phase = 1;
+            std::string system = llm::aiProtoSystemPrompt();
+            std::string user = st.input;
+            st.worker = std::thread([&st, system, user] {
+                std::string resp, err;
+                if (!llm::chatCompletion(st.cfg, system, user, resp, err)) {
+                    st.error = std::move(err);
+                    st.phase = 3;
+                    return;
+                }
+                llm::AiProtoResult r;
+                std::string perr;
+                if (!llm::parseAiProtoResponse(resp, r, perr)) {
+                    st.error = perr.empty() ? "解析失败" : perr;
+                    st.phase = 3;
+                    return;
+                }
+                st.response = std::move(resp);
+                st.result = std::move(r);
+                st.error = std::move(perr);
+                st.phase = 2;
+            });
+        }
+    }
+
+    // ---- 结果展示 ----
+    if (st.phase == 2) {
+        ImGui::Separator();
+        const llm::AiProtoResult& r = st.result;
+        ImGui::Text("拆帧：%s%s", r.tlv ? "TLV" : "帧头+Length",
+                    r.tlv ? "" : ("  帧头 " + r.headerHex).c_str());
+        if (!r.fields.empty() && ImGui::BeginTable("aifields", 4,
+                                                   ImGuiTableFlags_Borders |
+                                                       ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("字段");
+            ImGui::TableSetupColumn(r.tlv ? "槽位" : "偏移");
+            ImGui::TableSetupColumn("类型");
+            ImGui::TableSetupColumn("说明");
+            ImGui::TableHeadersRow();
+            char buf[96];
+            for (const auto& f : r.fields) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(f.name.c_str());
+                ImGui::TableNextColumn();
+                if (r.tlv)
+                    ImGui::Text("%02X", f.tagId);
+                else
+                    ImGui::Text("%d", f.offset);
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(f.type.c_str());
+                ImGui::TableNextColumn();
+                if (f.type == "string")
+                    ImGui::Text("%d 字节", f.strLen);
+                else if (f.type == "enum" && !f.enumItems.empty())
+                    ImGui::Text("%d 项映射", (int)f.enumItems.size());
+                else if (!r.tlv)
+                    ImGui::Text("偏移 %d", f.offset);
+                else {
+                    snprintf(buf, sizeof(buf), "T=%02X 偏移 %d", f.tagId, f.offset);
+                    ImGui::TextUnformatted(buf);
+                }
+            }
+            ImGui::EndTable();
+        }
+        if (!st.error.empty())
+            ImGui::TextDisabled("%s", st.error.c_str());
+        if (ImGui::Button("应用到组件", ImVec2(120, 0))) {
+            ctx.doc.commit("AI 生成规约");
+            llm::applyAiProto(c, st.result);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("应用后可继续手工调整");
+    } else if (st.phase == 3 && !st.error.empty()) {
+        ImGui::TextColored(ImVec4(1, 0.45f, 0.45f, 1), "%s", st.error.c_str());
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("关闭", ImVec2(80, 0))) {
+        if (st.worker.joinable()) st.worker.join();
+        st.phase = 0;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 // 协议配置组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
 void drawProtocolFields(Component& c, PlannerContext& ctx) {
     ImGui::Separator();
@@ -102,6 +266,10 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         c.setProp("fieldCount", int64_t(count - 1));
         --count;
     }
+    ImGui::SameLine();
+    if (ImGui::Button("AI 配置规约…"))
+        ImGui::OpenPopup("AI 配置规约");
+    drawAiProtoDialog(c, ctx);
     bool tlv = props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV";
     ImGui::TextDisabled("%s", tlv ? "TLV：字段按槽位(T)匹配帧，偏移相对该帧负载 V"
                                   : "帧头+Length：偏移相对负载（帧头 + length 字段之后）");
