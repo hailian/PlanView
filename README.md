@@ -27,7 +27,7 @@ scripts\build.cmd x64-debug      :: 或 x64-release
 
 **DPI 缩放**：界面按显示器 DPI 自动缩放（字体/间距/窗口尺寸/画布默认缩放），跨不同缩放比例的显示器拖动时热切换；环境变量 `SOFTG_UI_SCALE`（如 `set SOFTG_UI_SCALE=1.5`）可强制指定缩放。
 
-构建产物：`out/build/<preset>/src/planner/LogicPlanner.exe`、`out/build/<preset>/src/viewer/PageViewer.exe`。
+构建产物（所有 exe 直接位于 preset 目录下）：`out/build/<preset>/LogicPlanner.exe`、`out/build/<preset>/PageViewer.exe`、`out/build/<preset>/softg_tests.exe`。
 
 ## 使用
 
@@ -38,7 +38,7 @@ scripts\build.cmd x64-debug      :: 或 x64-release
 python tools\tcp_sim.py 9000
 
 :: 2) 用运行器打开演示工程
-out\build\x64-debug\src\viewer\PageViewer.exe examples\demo_project.json
+out\build\x64-debug\PageViewer.exe examples\demo_project.json
 ```
 
 演示内容：仪表/曲线随模拟数据刷新；「启动/停止」按钮写回槽位 7（指示灯与开关同步）；温度 1 > 25 触发闪烁告警（顶部告警条可确认）；液位 ≥ 35 触发描边告警（非锁存，自动恢复）；「副画面」按钮页面跳转；滑块拖动写回槽位 6（模拟器控制台可见 WRITE）。
@@ -90,7 +90,7 @@ type ∈ bool|int16|uint16|int32|uint32|float32
 
 ```bat
 scripts\build.cmd x64-debug softg_tests
-out\build\x64-debug\tests\softg_tests.exe
+out\build\x64-debug\softg_tests.exe
 ```
 
 覆盖：模型 JSON 往返（字节级一致）/ 高版本拒载 / 协议黄金行 / 值文本化 / TCP 回环（含应答分片重组）/ 引擎语义（绑定刷新、联动级联与环截断、告警锁存确认、写回排队、数据质量）。

@@ -30,7 +30,7 @@ scripts\build.cmd x64-debug PageViewer
 cmd //c "scripts\\build.cmd x64-debug"
 ```
 
-产物在 `out/build/<preset>/src/planner/LogicPlanner.exe`、`out/build/<preset>/src/viewer/PageViewer.exe`。
+产物（所有 exe 直接位于 preset 目录下）：`out/build/<preset>/LogicPlanner.exe`、`out/build/<preset>/PageViewer.exe`、`out/build/<preset>/softg_tests.exe`。
 
 ### 单元测试
 
@@ -38,7 +38,7 @@ cmd //c "scripts\\build.cmd x64-debug"
 
 ```bat
 scripts\build.cmd x64-debug softg_tests
-out\build\x64-debug\tests\softg_tests.exe   :: 或 ctest --preset x64-debug
+out\build\x64-debug\softg_tests.exe   :: 或 ctest --preset x64-debug
 ```
 
 **新增测试文件**：在 `tests/` 下建 `.cpp`，直接 `#include "SoftgTest.h"` 即可（**不要**定义 `SOFTG_TEST_MAIN`，main 已在 `test_Smoke.cpp` 中），然后把文件加进 `tests/CMakeLists.txt`。
@@ -49,7 +49,7 @@ out\build\x64-debug\tests\softg_tests.exe   :: 或 ctest --preset x64-debug
 
 ```bat
 python tools\tcp_sim.py 9000                                        :: 数据服务器模拟器
-out\build\x64-debug\src\viewer\PageViewer.exe examples\demo_project.json
+out\build\x64-debug\PageViewer.exe examples\demo_project.json
 ```
 
 预期：仪表/曲线随模拟数据刷新；按钮写回槽位 7；阈值告警闪烁/描边；页面跳转；滑块写回槽位 6。GUI 行为无法自动化时，以此演示工程手动核对。
