@@ -78,10 +78,16 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
             ImGui::SetNextItemWidth(-1);
             int64_t tagId = props::asInt(c.propOr(p + "tagId", int64_t(0)));
             int v = (int)tagId;
-            // 槽位 = TLV 帧 T 值（报文字节），按十六进制输入/显示
+            // 槽位 = TLV 帧 T 值（报文字节），十六进制输入/显示；
+            // 取值上限随 T 字节数：1B→0xFF、2B→0xFFFF、3B→0xFFFFFF、4B→0xFFFFFFFF
+            int64_t maxTagId = props::asInt(
+                c.propOr("tagBytes", int64_t(1)));
+            maxTagId = (int64_t)1 << (int64_t)(8 * std::clamp<int64_t>(maxTagId, 1, 4));
             if (ImGui::InputInt("##t", &v, 0, 0, ImGuiInputTextFlags_CharsHexadecimal)) {
                 if (ImGui::IsItemActivated()) ctx.doc.commit("字段槽位");
-                c.setProp(p + "tagId", int64_t(std::clamp(v, 0, 255)));
+                uint32_t uv = (uint32_t)std::clamp<int64_t>(
+                    (int64_t)v, 0, std::min<int64_t>(maxTagId - 1, 0xFFFFFFFF));
+                c.setProp(p + "tagId", int64_t(uv));
             }
         }
 
