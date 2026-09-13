@@ -188,12 +188,14 @@ TEST_CASE("标签库唯一性") {
 
 TEST_CASE("组件注册表") {
     auto& reg = ComponentRegistry::instance();
-    CHECK(reg.all().size() == 10); // 9 基础组件 + 数据源（通信）
+    CHECK(reg.all().size() == 11); // 9 基础组件 + 数据源/协议配置（通信）
     REQUIRE(reg.find("Gauge") != nullptr);
     CHECK(reg.find("Gauge")->displayName == "仪表");
     CHECK(reg.find("NoSuchType") == nullptr);
     REQUIRE(reg.find("DataSource") != nullptr);
     CHECK(reg.find("DataSource")->category == "通信");
+    REQUIRE(reg.find("ProtocolConfig") != nullptr);
+    CHECK(reg.find("ProtocolConfig")->category == "通信");
 
     Component c = ComponentRegistry::createComponent("Gauge", "comp-x");
     CHECK(c.id == "comp-x");

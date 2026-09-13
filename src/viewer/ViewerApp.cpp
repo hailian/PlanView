@@ -100,10 +100,8 @@ void ViewerApp::saveRecentPath(const std::string& path) {
 
 void ViewerApp::startPolling() {
     if (!hasProject_ || project_.tags.all().empty()) return;
-    // 数据源组件（拖拽到画布的「数据源」）优先；无组件时回退工程级 settings.frame
-    //（旧工程），再由 PollWorker 按 enabled 决定是否走 SoftG 行协议
-    if (const Component* ds = project_.findComponentByType("DataSource"))
-        project_.settings.frame = frameSettingsFromComponent(*ds);
+    // 数据源组件（传输）+ 关联协议配置组件（拆帧/字段）合成；无组件时回退旧工程设置
+    project_.settings.frame = frameSettingsFromProject(project_);
     worker_.start(project_.settings, project_.tags.all());
 }
 

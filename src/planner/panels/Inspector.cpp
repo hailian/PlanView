@@ -14,8 +14,8 @@ namespace {
 const char* kFieldTypes[] = {"u8", "i8", "u16", "i16", "u32", "i32", "f32", "f64"};
 const int kFieldTypeCount = 8;
 
-// DataSource 组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
-void drawDataSourceFields(Component& c, PlannerContext& ctx) {
+// 协议配置组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
+void drawProtocolFields(Component& c, PlannerContext& ctx) {
     ImGui::Separator();
     ImGui::TextUnformatted("规约字段（帧 -> 标签槽位）");
     int64_t count64 = props::asInt(c.propOr("fieldCount", int64_t(0)));
@@ -98,6 +98,29 @@ void drawDataSourceFields(Component& c, PlannerContext& ctx) {
             c.setProp(p + "address", int64_t(std::clamp(a, 0, 65535)));
         }
         ImGui::PopID();
+    }
+}
+
+// 数据源组件的「关联协议」动态下拉：候选 = 工程内全部协议配置组件名（跨页）
+void drawProtocolSelector(Component& c, PlannerContext& ctx) {
+    std::string cur = props::asString(c.propOr("protocol", std::string()));
+    const char* preview = cur.empty() ? "(未关联)" : cur.c_str();
+    if (ImGui::BeginCombo("关联协议", preview)) {
+        if (ImGui::Selectable("(未关联)", cur.empty())) {
+            ctx.doc.commit("取消关联协议");
+            c.setProp("protocol", std::string());
+        }
+        for (const auto& pg : ctx.project().pages)
+            for (const auto& pc : pg.components) {
+                if (pc.typeId != "ProtocolConfig") continue;
+                bool sel = pc.name == cur;
+                if (ImGui::Selectable(pc.name.c_str(), sel) && !sel) {
+                    ctx.doc.commit("关联协议");
+                    c.setProp("protocol", pc.name);
+                }
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+        ImGui::EndCombo();
     }
 }
 
@@ -266,28 +289,34 @@ void drawInspector(PlannerContext& ctx) {
     ImGui::Separator();
     ImGui::TextUnformatted("组件属性");
     if (info) {
+        bool isDs = c->typeId == "DataSource";
+        bool isProto = c->typeId == "ProtocolConfig";
+        bool dsTcp = props::asString(c->propOr("transport", std::string("UDP"))) == "TCP";
+        bool protoTlv =
+            props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
-            // 数据源组件的 TCP 拆帧项仅在对应模式下有意义，切换显示避免误配
-            if (c->typeId == "DataSource") {
-                bool tlv = props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
-                bool isTlvItem = spec.key == "tagBytes" || spec.key == "lenBytes" ||
-                                 spec.key == "bigEndian" || spec.key == "lenIncludesHeader";
-                bool isHeaderItem = spec.key == "headerHex" || spec.key == "lenOffset" ||
-                                    spec.key == "lenBytesHeader" || spec.key == "bigEndianHeader" ||
-                                    spec.key == "lenIncludesAll";
-                if (isTlvItem && !tlv) continue;
-                if (isHeaderItem && tlv) continue;
-                if (spec.key == "localPort" &&
-                    props::asString(c->propOr("transport", std::string("UDP"))) == "TCP")
-                    continue; // 本地端口仅 UDP 使用
+            if (isDs) {
+                if (spec.key == "protocol") continue; // 动态下拉（候选为协议组件名）
+                if (spec.key == "localPort" && dsTcp) continue;
+            }
+            if (isProto) { // 拆帧项按模式互斥显示，避免误配
+                bool tlvItem = spec.key == "tagBytes" || spec.key == "lenBytes" ||
+                               spec.key == "bigEndian" || spec.key == "lenIncludesHeader";
+                bool headerItem = spec.key == "headerHex" || spec.key == "lenOffset" ||
+                                  spec.key == "lenBytesHeader" ||
+                                  spec.key == "bigEndianHeader" || spec.key == "lenIncludesAll";
+                if (tlvItem && !protoTlv) continue;
+                if (headerItem && protoTlv) continue;
             }
             PropertyValue v = c->propOr(spec.key, spec.defaultValue);
             bool changed = editProperty(spec, v);
             commitOnEdit(spec, changed, ctx);
             if (changed) c->setProp(spec.key, v);
         }
-        if (c->typeId == "DataSource")
-            drawDataSourceFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
+        if (isDs)
+            drawProtocolSelector(*c, ctx); // 关联协议（动态候选）
+        if (isProto)
+            drawProtocolFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
     } else {
         ImGui::TextColored(ImVec4(1, 0.6f, 0.6f, 1), "未注册类型: %s", c->typeId.c_str());
     }

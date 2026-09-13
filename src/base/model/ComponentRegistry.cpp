@@ -141,13 +141,21 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         t.push_back(std::move(i));
     }
     { // 数据源（通信组件：拖到画布即启用，运行器按其配置收报文驱动标签；
-      // 规约字段列表由 Inspector 自定义区编辑，存储为 f<i>.* 索引属性）
+      // 拆帧与规约字段由「协议配置」组件提供，经 protocol 属性按名称关联）
         ComponentTypeInfo i{"DataSource", "数据源", "通信", {170, 84}, {}};
         i.properties = {
             specEnum("transport", "传输方式", "UDP", {"UDP", "TCP"}),
             specString("host", "主机/目标IP", "127.0.0.1"),
             specInt("remotePort", "远端端口", 9001, 1, 65535),
             specInt("localPort", "UDP本地端口", 9001, 1, 65535),
+            specString("protocol", "关联协议", ""), // 协议配置组件名（Inspector 动态下拉）
+        };
+        t.push_back(std::move(i));
+    }
+    { // 协议配置（拆帧方式 + 规约字段；被数据源组件关联复用，
+      // 字段列表由 Inspector 自定义区编辑，存储为 f<i>.* 索引属性）
+        ComponentTypeInfo i{"ProtocolConfig", "协议配置", "通信", {180, 84}, {}};
+        i.properties = {
             specEnum("framingMode", "拆帧模式", "TLV", {"TLV", "帧头+Length"}),
             specInt("tagBytes", "T字节数(TLV)", 1, 1, 4),
             specInt("lenBytes", "L字节数(TLV)", 2, 1, 4),

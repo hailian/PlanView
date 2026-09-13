@@ -28,6 +28,7 @@ void ComponentRenderer::drawComponent(ImDrawList* dl, const Component& c, const 
     else if (c.typeId == "Panel") drawPanel(dl, r, c, ctx, scale);
     else if (c.typeId == "Image") drawImage(dl, r, c, ctx, scale);
     else if (c.typeId == "DataSource") drawDataSource(dl, r, c, ctx, scale);
+    else if (c.typeId == "ProtocolConfig") drawProtocolConfig(dl, r, c, ctx, scale);
     else drawUnknown(dl, r, c, ctx, scale);
 
     // ---- 告警视觉统一叠加（三种样式，颜色随严重度） ----

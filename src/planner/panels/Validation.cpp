@@ -62,6 +62,7 @@ void drawValidation(PlannerContext& ctx) {
     }
 
     // 数据源组件全局唯一：多个时仅第一个生效（findComponentByType 语义）
+    std::vector<const Component*> protocols; // 协议配置组件（重名检测用）
     {
         int dsCount = 0;
         const Component* firstDs = nullptr;
@@ -70,11 +71,49 @@ void drawValidation(PlannerContext& ctx) {
                 if (c.typeId == "DataSource") {
                     if (!firstDs) firstDs = &c;
                     ++dsCount;
+                } else if (c.typeId == "ProtocolConfig") {
+                    protocols.push_back(&c);
                 }
         if (dsCount > 1)
             issues.push_back({"数据源组件超过一个（仅第一个生效）: " +
                                   std::to_string(dsCount) + " 个",
                               firstDs ? firstDs->id : "", true});
+        // 数据源关联的协议必须存在（按名称匹配）
+        if (firstDs) {
+            std::string protoName =
+                props::asString(firstDs->propOr("protocol", std::string()));
+            if (!protoName.empty()) {
+                bool found = false;
+                for (const auto* pc : protocols)
+                    if (pc->name == protoName) found = true;
+                if (!found)
+                    issues.push_back({"数据源关联的协议配置不存在: " + protoName,
+                                      firstDs->id, true});
+            } else {
+                issues.push_back({"数据源未关联协议配置（默认 TLV，无字段）", firstDs->id,
+                                  true});
+            }
+        }
+    }
+    // 协议配置：重名（关联按名称匹配会歧义）与未被引用提示
+    if (!protocols.empty()) {
+        for (size_t i = 0; i < protocols.size(); ++i) {
+            for (size_t j = i + 1; j < protocols.size(); ++j)
+                if (protocols[i]->name == protocols[j]->name)
+                    issues.push_back({"协议配置重名（关联按名称匹配，仅第一个生效）: " +
+                                          protocols[i]->name,
+                                      protocols[i]->id, true});
+        }
+        for (const auto* pc : protocols) {
+            bool referenced = false;
+            for (const auto& pg : p.pages)
+                for (const auto& c : pg.components)
+                    if (c.typeId == "DataSource" &&
+                        props::asString(c.propOr("protocol", std::string())) == pc->name)
+                        referenced = true;
+            if (!referenced)
+                issues.push_back({"协议配置未被任何数据源关联: " + pc->name, pc->id, true});
+        }
     }
 
     if (issues.empty()) {

@@ -151,39 +151,53 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
     src.disconnect();
 }
 
-TEST_CASE("帧数据源：数据源组件属性 -> 设置解析") {
-    // 注册表创建（等同从组件面板拖入的初始状态）
-    Component c = ComponentRegistry::createComponent("DataSource", "ds-1");
-    CHECK(c.typeId == "DataSource");
+TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
 
-    // 按用户在属性面板/规约字段区的编辑结果设置属性
-    c.setProp("transport", std::string("TCP"));
-    c.setProp("host", std::string("192.168.1.50"));
-    c.setProp("remotePort", int64_t(8888));
-    c.setProp("framingMode", std::string("帧头+Length"));
-    c.setProp("headerHex", std::string("EB 90"));
-    c.setProp("lenOffset", int64_t(3));
-    c.setProp("lenBytesHeader", int64_t(1));
-    c.setProp("bigEndianHeader", false);
-    c.setProp("lenIncludesAll", true);
-    c.setProp("fieldCount", int64_t(2));
-    c.setProp("f0.name", std::string("温度"));
-    c.setProp("f0.tagId", int64_t(1));
-    c.setProp("f0.offset", int64_t(4));
-    c.setProp("f0.type", std::string("f32"));
-    c.setProp("f0.bigEndian", false);
-    c.setProp("f0.address", int64_t(7));
-    c.setProp("f1.name", std::string("计数"));
-    c.setProp("f1.tagId", int64_t(2));
-    c.setProp("f1.offset", int64_t(8));
-    c.setProp("f1.type", std::string("u32"));
-    c.setProp("f1.address", int64_t(9));
+    // 协议配置组件：帧头+Length 拆帧 + 2 字段
+    Component proto = ComponentRegistry::createComponent("ProtocolConfig", "proto-1");
+    proto.name = "设备协议A";
+    proto.setProp("framingMode", std::string("帧头+Length"));
+    proto.setProp("headerHex", std::string("EB 90"));
+    proto.setProp("lenOffset", int64_t(3));
+    proto.setProp("lenBytesHeader", int64_t(1));
+    proto.setProp("bigEndianHeader", false);
+    proto.setProp("lenIncludesAll", true);
+    proto.setProp("fieldCount", int64_t(2));
+    proto.setProp("f0.name", std::string("温度"));
+    proto.setProp("f0.tagId", int64_t(1));
+    proto.setProp("f0.offset", int64_t(4));
+    proto.setProp("f0.type", std::string("f32"));
+    proto.setProp("f0.bigEndian", false);
+    proto.setProp("f0.address", int64_t(7));
+    proto.setProp("f1.name", std::string("计数"));
+    proto.setProp("f1.tagId", int64_t(2));
+    proto.setProp("f1.offset", int64_t(8));
+    proto.setProp("f1.type", std::string("u32"));
+    proto.setProp("f1.address", int64_t(9));
+    p.pages[0].components.push_back(proto);
 
-    FrameSourceSettings s = frameSettingsFromComponent(c);
+    // 无数据源：回退工程设置（enabled=false）
+    FrameSourceSettings none = frameSettingsFromProject(p);
+    CHECK(!none.enabled);
+
+    // 数据源组件（TCP + 关联协议）
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("transport", std::string("TCP"));
+    ds.setProp("host", std::string("192.168.1.50"));
+    ds.setProp("remotePort", int64_t(8888));
+    ds.setProp("protocol", std::string("设备协议A"));
+    p.pages[0].components.push_back(ds);
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
     CHECK(s.enabled);
-    CHECK(!s.udp);
+    CHECK(!s.udp); // 传输来自数据源
     CHECK(s.host == "192.168.1.50");
     CHECK(s.remotePort == 8888);
+    // 拆帧/字段来自协议组件
     CHECK(s.framing.mode == packet::FrameMode::HeaderLength);
     CHECK(packet::bytesToHex(s.framing.header) == "EB 90");
     CHECK(s.framing.lenOffset == 3);
@@ -199,9 +213,18 @@ TEST_CASE("帧数据源：数据源组件属性 -> 设置解析") {
     CHECK(s.fields[1].type == packet::FieldType::U32);
     CHECK(s.fields[1].address == 9);
 
-    // 默认（未改动任何属性）：UDP + TLV，无字段
+    // 协议名不存在：默认 TLV 无字段（仍可收帧监视）
+    p.pages[0].components.back().setProp("protocol", std::string("不存在"));
+    FrameSourceSettings miss = frameSettingsFromProject(p);
+    CHECK(miss.enabled);
+    CHECK(miss.framing.mode == packet::FrameMode::Tlv);
+    CHECK(miss.fields.empty());
+
+    // 默认数据源（未改属性）：UDP + 未关联协议
     Component fresh = ComponentRegistry::createComponent("DataSource", "ds-2");
-    FrameSourceSettings d = frameSettingsFromComponent(fresh);
+    p.pages[0].components.clear();
+    p.pages[0].components.push_back(fresh);
+    FrameSourceSettings d = frameSettingsFromProject(p);
     CHECK(d.enabled);
     CHECK(d.udp);
     CHECK(d.framing.mode == packet::FrameMode::Tlv);

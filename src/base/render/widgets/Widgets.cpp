@@ -433,7 +433,7 @@ void drawImage(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     }
 }
 
-// ---- DataSource 数据源（通信组件信息卡：不参与交互，展示接入配置）----
+// ---- DataSource 数据源（通信组件信息卡：传输配置 + 关联协议）----
 void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                     const RenderContext& ctx, float scale) {
     (void)ctx;
@@ -451,10 +451,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::string host = props::asString(c.propOr("host", std::string("127.0.0.1")));
     int64_t remotePort = props::asInt(c.propOr("remotePort", int64_t(9001)));
     int64_t localPort = props::asInt(c.propOr("localPort", int64_t(9001)));
-    int64_t fieldCount = props::asInt(c.propOr("fieldCount", int64_t(0)));
+    std::string protocol = props::asString(c.propOr("protocol", std::string()));
 
-    float fs = 15.0f * scale;
-    dl->AddText(font(), fs, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
+    dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
                 kDefaultTextFg, "数据源");
     char line[128];
     if (transport == "TCP")
@@ -464,11 +463,43 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                       host.c_str(), (long long)remotePort);
     dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
                 IM_COL32(160, 172, 192, 255), line);
-    std::snprintf(line, sizeof(line), "%s · %lld 字段",
-                  props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV"
-                      ? "TLV"
-                      : "帧头+Len",
-                  (long long)fieldCount);
+    std::snprintf(line, sizeof(line), "协议: %s",
+                  protocol.empty() ? "(未关联)" : protocol.c_str());
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
+                protocol.empty() ? IM_COL32(200, 120, 90, 255) : IM_COL32(120, 150, 190, 255),
+                line);
+}
+
+// ---- ProtocolConfig 协议配置（通信组件信息卡：拆帧方式 + 规约字段数）----
+void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                        const RenderContext& ctx, float scale) {
+    (void)ctx;
+    float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(22, 24, 34, 255), radius);
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 4.0f * scale, r.Max.y - radius),
+                      kDefaultBtnBg, 2.0f * scale); // 左侧品牌蓝竖条（区别于数据源的青色）
+
+    bool tlv = props::asString(c.propOr("framingMode", std::string("TLV"))) == "TLV";
+    int64_t fieldCount = props::asInt(c.propOr("fieldCount", int64_t(0)));
+
+    dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
+                kDefaultTextFg, "协议配置");
+    char line[128];
+    if (tlv) {
+        std::snprintf(line, sizeof(line), "TLV  T:%lld L:%lld %s",
+                      (long long)props::asInt(c.propOr("tagBytes", int64_t(1))),
+                      (long long)props::asInt(c.propOr("lenBytes", int64_t(2))),
+                      props::asBool(c.propOr("bigEndian", true)) ? "大端" : "小端");
+    } else {
+        std::string hex = props::asString(c.propOr("headerHex", std::string("AA 55")));
+        std::snprintf(line, sizeof(line), "帧头+Len  [%s]", hex.c_str());
+    }
+    dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
+                IM_COL32(160, 172, 192, 255), line);
+    std::snprintf(line, sizeof(line), "%lld 字段", (long long)fieldCount);
     dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
                 IM_COL32(120, 132, 152, 255), line);
 }

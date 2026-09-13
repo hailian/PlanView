@@ -11,6 +11,8 @@
 
 namespace softg {
 
+class Project; // 前向声明（Project.h 反向包含本文件，勿加完整定义）
+
 // 规约字段 → 标签槽位映射
 // 偏移语义随拆帧模式：
 //   TLV 模式：tagId 匹配帧的 T 值，offset 相对该帧负载 V 的起点；
@@ -37,7 +39,13 @@ struct FrameSourceSettings {
     std::vector<TagField> fields;
 };
 
-// 数据源组件（typeId == "DataSource"）属性 -> 帧数据源设置（运行器取首个该组件驱动 PollWorker）
-FrameSourceSettings frameSettingsFromComponent(const Component& c);
+// 协议配置组件（typeId == "ProtocolConfig"）属性 -> 拆帧参数 + 规约字段。
+// 字段以 f<i>.* 索引属性存储（Inspector 自定义区编辑）
+void protocolFramingFromComponent(const Component& proto, packet::FramingConfig& framing,
+                                  std::vector<TagField>& fields);
+
+// 工程级合成：取首个数据源组件（传输）+ 其 protocol 属性按名称关联的协议配置组件
+//（拆帧/字段）。无数据源组件时返回旧工程 settings.frame 或 disabled（走行协议）。
+FrameSourceSettings frameSettingsFromProject(const Project& p);
 
 } // namespace softg
