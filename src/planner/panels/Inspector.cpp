@@ -257,7 +257,12 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         ctx.doc.commit("添加规约字段");
         std::string p = "f" + std::to_string(count) + ".";
         cp->setProp(p + "name", std::string("字段" + std::to_string(count + 1)));
-        cp->setProp(p + "tagId", int64_t(count + 1));
+        // 槽位(T 值)默认与前一条字段相同（首条为 0），不自增：实际 T 值由报文决定
+        int64_t prevTagId = 0;
+        if (count > 0)
+            prevTagId = props::asInt(
+                cp->propOr("f" + std::to_string(count - 1) + ".tagId", int64_t(0)));
+        cp->setProp(p + "tagId", prevTagId);
         cp->setProp(p + "offset", int64_t(0));
         cp->setProp(p + "type", std::string("u16"));
         cp->setProp(p + "bigEndian", true);
@@ -311,7 +316,7 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
 
     // 表格式行编辑：列头作标签、控件填满列宽，避免行内控件互相挤压截断
     //（标签槽位由字段序号自动分配，不再编辑；隐式标签按槽位合成）
-    int cols = tlv ? 5 : 4;
+    int cols = tlv ? 6 : 5;
     if (!ImGui::BeginTable("pfields", cols, ImGuiTableFlags_SizingStretchProp |
                                              ImGuiTableFlags_RowBg))
         return;
@@ -320,6 +325,7 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         ImGui::TableSetupColumn("槽位(hex)", ImGuiTableColumnFlags_WidthStretch, 0.9f);
     ImGui::TableSetupColumn("偏移", ImGuiTableColumnFlags_WidthStretch, 0.9f);
     ImGui::TableSetupColumn("类型", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+    ImGui::TableSetupColumn("scale", ImGuiTableColumnFlags_WidthStretch, 1.0f);
     ImGui::TableSetupColumn("长度/枚举", ImGuiTableColumnFlags_WidthStretch, 1.3f);
     ImGui::TableHeadersRow();
 
@@ -379,6 +385,17 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         }
         // 类型可能刚被修改，重新读取以决定本列
         typeName = props::asString(cp->propOr(p + "type", std::string("u16")));
+
+        // scale：数值类型工程换算（工程值 = 原始值 × scale；bool/string/enum 不适用）
+        ImGui::TableNextColumn();
+        if (typeName != "bool" && typeName != "string" && typeName != "enum") {
+            ImGui::SetNextItemWidth(-1);
+            double sc = props::asDouble(cp->propOr(p + "scale", 1.0));
+            if (ImGui::InputDouble("##sc", &sc, 0.0, 0.0, "%.4f")) {
+                if (ImGui::IsItemActivated()) ctx.doc.commit("字段scale");
+                cp->setProp(p + "scale", sc);
+            }
+        }
 
         // 长度/枚举：字符串=长度（字节）；枚举=编辑映射；其它=空
         ImGui::TableNextColumn();

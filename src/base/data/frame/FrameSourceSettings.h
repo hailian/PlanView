@@ -26,6 +26,7 @@ struct TagField {
     int bytes = 2;                           // 固定类型由类型决定；string/enum 由长度属性
     bool bigEndian = true;                   // 多字节字节序
     int address = 0;                         // 标签槽位（Tag::address）
+    double scale = 1.0;                      // 数值字段工程换算：工程值 = 原始值 * scale（bool/string/enum 不适用）
     std::vector<std::pair<int64_t, std::string>> enums; // Enum：值 → 名称
 };
 

@@ -29,7 +29,8 @@ uint64_t readUint(const uint8_t* p, int n, bool bigEndian) {
 }
 
 // 按字段类型解出 TagValue；越界/不支持返回 false
-// 整数→int64_t、浮点→double、Bool→bool、String/Enum→std::string（枚举名或原数值文本）
+// 整数→int64_t、浮点→double（数值字段乘 scale 换算，scale=1 保持整数型）；
+// Bool→bool、String/Enum→std::string（枚举名或原数值文本），这两类不做换算
 bool fieldValue(const TagField& f, const uint8_t* p, int avail, TagValue& out) {
     int bytes = packet::fieldTypeBytes(f.type);
     if (f.type == packet::FieldType::String || f.type == packet::FieldType::Enum)
@@ -62,24 +63,27 @@ bool fieldValue(const TagField& f, const uint8_t* p, int avail, TagValue& out) {
         uint32_t u = (uint32_t)readUint(p, 4, f.bigEndian);
         float v;
         std::memcpy(&v, &u, 4);
-        out = (double)v;
+        out = (double)v * f.scale;
         return true;
     }
     case packet::FieldType::F64: {
         uint64_t u = readUint(p, 8, f.bigEndian);
         double v;
         std::memcpy(&v, &u, 8);
-        out = v;
+        out = v * f.scale;
         return true;
     }
-    default: { // 整数：有符号补码扩展，统一升为 int64_t
+    default: { // 整数：有符号补码扩展，统一升为 int64_t；带 scale 时乘出工程值（可能为小数）
         uint64_t u = readUint(p, bytes, f.bigEndian);
         int bits = bytes * 8;
         if ((f.type == packet::FieldType::I8 || f.type == packet::FieldType::I16 ||
              f.type == packet::FieldType::I32) &&
             bytes < 8 && (u & (1ULL << (bits - 1))))
             u |= ~0ULL << bits;
-        out = (int64_t)u;
+        if (f.scale != 1.0)
+            out = (double)u * f.scale;
+        else
+            out = (int64_t)u;
         return true;
     }
     }

@@ -54,7 +54,7 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
         std::string prefix = "f" + std::to_string(i) + ".";
         TagField f;
         f.name = props::asString(c.propOr(prefix + "name", std::string("字段")));
-        f.tagId = (int)props::asInt(c.propOr(prefix + "tagId", int64_t(i + 1)));
+        f.tagId = (int)props::asInt(c.propOr(prefix + "tagId", int64_t(0))); // 缺省 0，不自增
         f.offset = (int)props::asInt(c.propOr(prefix + "offset", int64_t(0)));
         std::string typeName = props::asString(c.propOr(prefix + "type", std::string("u16")));
         if (!packet::fieldTypeFromString(typeName, f.type))
@@ -69,6 +69,7 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
             f.bytes = (w == 2 || w == 4) ? (int)w : 1; // 枚举宽度限 1/2/4 字节
         }
         f.bigEndian = props::asBool(c.propOr(prefix + "bigEndian", true));
+        f.scale = props::asDouble(c.propOr(prefix + "scale", 1.0)); // 数值字段换算，缺省不缩放
         if (f.type == packet::FieldType::Enum) { // 枚举映射表 e<j>.v/.n
             int64_t n = props::asInt(c.propOr(prefix + "enumCount", int64_t(0)));
             for (int64_t j = 0; j < n; ++j) {
@@ -235,7 +236,11 @@ void synthesizeImplicitBindings(Project& p) {
                     nt.type = TagDataType::String; break; // 文本/枚举名标签
                 default: nt.type = TagDataType::UInt16; break; // u8/u16/i8 升宽
                 }
-                nt.scale = 1.0; // 组件直接绑字段：换算在字段类型/协议侧，不做二次缩放
+                // 带 scale 的数值字段：工程值可能为小数，标签升为 Float32 承接
+                if (f->scale != 1.0 && f->type != packet::FieldType::Bool &&
+                    f->type != packet::FieldType::String && f->type != packet::FieldType::Enum)
+                    nt.type = TagDataType::Float32;
+                nt.scale = 1.0; // 换算在协议侧（字段 scale），标签不再二次缩放
                 std::string err;
                 p.tags.add(std::move(nt), err);
                 for (auto& tag : p.tags.all())

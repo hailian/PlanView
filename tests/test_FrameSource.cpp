@@ -175,6 +175,7 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     proto.setProp("f1.tagId", int64_t(2));
     proto.setProp("f1.offset", int64_t(8));
     proto.setProp("f1.type", std::string("u32"));
+    proto.setProp("f1.scale", 0.1);
     p.pages[0].components.push_back(proto);
 
     // 无数据源：回退工程设置（enabled=false）
@@ -209,6 +210,8 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     CHECK(s.fields[0].address == 0); // 槽位=字段序号
     CHECK(s.fields[1].type == packet::FieldType::U32);
     CHECK(s.fields[1].address == 1);
+    CHECK(s.fields[0].scale == 1.0); // 缺省不缩放
+    CHECK(s.fields[1].scale == 0.1); // 属性存储的 scale
 
     // 协议名不存在：默认 TLV 无字段（仍可收帧监视）
     p.pages[0].components.back().setProp("protocol", std::string("不存在"));
@@ -226,6 +229,82 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     CHECK(d.udp);
     CHECK(d.framing.mode == packet::FrameMode::Tlv);
     CHECK(d.fields.empty());
+}
+
+TEST_CASE("规约字段 scale：组件属性解析 + 隐式标签升 Float32") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+    Component proto = ComponentRegistry::createComponent("ProtocolConfig", "proto-1");
+    proto.name = "称重协议";
+    proto.setProp("fieldCount", int64_t(2));
+    proto.setProp("f0.name", std::string("重量"));
+    proto.setProp("f0.tagId", int64_t(1));
+    proto.setProp("f0.type", std::string("u16"));
+    proto.setProp("f0.scale", 0.01);
+    proto.setProp("f1.name", std::string("次数"));
+    proto.setProp("f1.tagId", int64_t(2));
+    proto.setProp("f1.type", std::string("u16"));
+    p.pages[0].components.push_back(proto);
+
+    packet::FramingConfig fr;
+    std::vector<TagField> fields;
+    protocolFramingFromComponent(proto, fr, fields);
+    REQUIRE(fields.size() == 2);
+    CHECK(fields[0].scale == 0.01); // 属性存储的 scale
+    CHECK(fields[1].scale == 1.0);  // 缺省不缩放
+
+    // 隐式标签：整数字段带 scale → 工程值可能为小数，标签类型升 Float32
+    Component gauge = ComponentRegistry::createComponent("Gauge", "g-1");
+    gauge.setProp("bindField", std::string("称重协议/重量"));
+    p.pages[0].components.push_back(gauge);
+    synthesizeImplicitBindings(p);
+    const Tag* t = p.tags.find("重量");
+    REQUIRE(t != nullptr);
+    CHECK(t->type == TagDataType::Float32);
+    CHECK(t->scale == 1.0); // 换算在字段侧，标签不二次缩放
+}
+
+TEST_CASE("帧数据源：字段 scale 工程换算（协议侧）") {
+    FrameSourceSettings cfg;
+    cfg.udp = true;
+    cfg.localPort = 59325;
+    cfg.remotePort = 59325;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.scale = 0.01; // 字段侧换算
+    f.address = 0;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59325 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("127.0.0.1", 59325);
+    CHECK(sender.send(hex("01 00 02 01 F5"), err)); // 原始 501
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t = makeTag("温度", 0, TagDataType::Float32, 1.0); // 标签不再缩放
+    std::vector<const Tag*> tags = {&t};
+    auto results = src.readTags(tags);
+    CHECK(results[0].ok);
+    double eng = 0;
+    if (auto* d = std::get_if<double>(&results[0].value)) eng = *d;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) eng = (double)*i;
+    CHECK(std::abs(eng - 5.01) < 1e-9); // 501 * 0.01
+    CHECK(std::get_if<double>(&results[0].value) != nullptr); // 小数工程值保持 double
+
+    sender.stop();
+    src.disconnect();
 }
 
 TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {
