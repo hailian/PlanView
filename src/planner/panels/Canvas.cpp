@@ -62,6 +62,139 @@ void drawHandle(ImDrawList* dl, ImVec2 pos, ImU32 color = IM_COL32(80, 160, 255,
                 IM_COL32(255, 255, 255, 200), 2.0f);
 }
 
+// ---- 对齐工具条图标（无图标字体，用 ImDrawList 手绘示意图；中心 c、半幅 h） ----
+using IconFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
+
+void iconAlignLeft(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h, T = c.y - h, B = c.y + h;
+    dl->AddLine(ImVec2(L, T), ImVec2(L, B), col, 1.5f);
+    dl->AddRectFilled(ImVec2(L, c.y - h * 0.62f), ImVec2(L + h * 0.85f, c.y - h * 0.12f), col);
+    dl->AddRectFilled(ImVec2(L, c.y + h * 0.12f), ImVec2(L + h * 1.65f, c.y + h * 0.62f), col);
+}
+void iconAlignHCenter(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float X = c.x, T = c.y - h, B = c.y + h;
+    dl->AddLine(ImVec2(X, T), ImVec2(X, B), col, 1.5f);
+    dl->AddRectFilled(ImVec2(X - h * 0.55f, c.y - h * 0.62f), ImVec2(X + h * 0.55f, c.y - h * 0.12f), col);
+    dl->AddRectFilled(ImVec2(X - h * 0.95f, c.y + h * 0.12f), ImVec2(X + h * 0.95f, c.y + h * 0.62f), col);
+}
+void iconAlignRight(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float R = c.x + h, T = c.y - h, B = c.y + h;
+    dl->AddLine(ImVec2(R, T), ImVec2(R, B), col, 1.5f);
+    dl->AddRectFilled(ImVec2(R - h * 0.85f, c.y - h * 0.62f), ImVec2(R, c.y - h * 0.12f), col);
+    dl->AddRectFilled(ImVec2(R - h * 1.65f, c.y + h * 0.12f), ImVec2(R, c.y + h * 0.62f), col);
+}
+void iconAlignTop(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h, R = c.x + h, T = c.y - h;
+    dl->AddLine(ImVec2(L, T), ImVec2(R, T), col, 1.5f);
+    dl->AddRectFilled(ImVec2(c.x - h * 0.62f, T), ImVec2(c.x - h * 0.12f, T + h * 0.85f), col);
+    dl->AddRectFilled(ImVec2(c.x + h * 0.12f, T), ImVec2(c.x + h * 0.62f, T + h * 1.65f), col);
+}
+void iconAlignVCenter(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h, R = c.x + h, Y = c.y;
+    dl->AddLine(ImVec2(L, Y), ImVec2(R, Y), col, 1.5f);
+    dl->AddRectFilled(ImVec2(c.x - h * 0.62f, Y - h * 0.55f), ImVec2(c.x - h * 0.12f, Y + h * 0.55f), col);
+    dl->AddRectFilled(ImVec2(c.x + h * 0.12f, Y - h * 0.95f), ImVec2(c.x + h * 0.62f, Y + h * 0.95f), col);
+}
+void iconAlignBottom(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h, R = c.x + h, B = c.y + h;
+    dl->AddLine(ImVec2(L, B), ImVec2(R, B), col, 1.5f);
+    dl->AddRectFilled(ImVec2(c.x - h * 0.62f, B - h * 0.85f), ImVec2(c.x - h * 0.12f, B), col);
+    dl->AddRectFilled(ImVec2(c.x + h * 0.12f, B - h * 1.65f), ImVec2(c.x + h * 0.62f, B), col);
+}
+void iconEqualWidth(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h * 0.95f, w = h * 1.7f;
+    dl->AddRectFilled(ImVec2(L, c.y - h * 0.85f), ImVec2(L + w, c.y - h * 0.12f), col);
+    dl->AddRectFilled(ImVec2(L, c.y + h * 0.12f), ImVec2(L + w, c.y + h * 0.85f), col);
+}
+void iconEqualHeight(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float T = c.y - h * 0.95f, hh = h * 1.7f;
+    dl->AddRectFilled(ImVec2(c.x - h * 0.85f, T), ImVec2(c.x - h * 0.12f, T + hh), col);
+    dl->AddRectFilled(ImVec2(c.x + h * 0.12f, T), ImVec2(c.x + h * 0.85f, T + hh), col);
+}
+void iconSameSize(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float s = h * 1.3f, gap = h * 0.4f, total = s * 2 + gap;
+    float x0 = c.x - total * 0.5f, y0 = c.y - s * 0.5f;
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + s, y0 + s), col);
+    dl->AddRectFilled(ImVec2(x0 + s + gap, y0), ImVec2(x0 + s + gap + s, y0 + s), col);
+}
+void iconDistributeH(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float T = c.y - h, B = c.y + h;
+    dl->AddRectFilled(ImVec2(c.x - h, T), ImVec2(c.x - h * 0.62f, B), col);
+    dl->AddRectFilled(ImVec2(c.x - h * 0.16f, T), ImVec2(c.x + h * 0.16f, B), col);
+    dl->AddRectFilled(ImVec2(c.x + h * 0.62f, T), ImVec2(c.x + h, B), col);
+}
+void iconDistributeV(ImDrawList* dl, ImVec2 c, float h, ImU32 col) {
+    float L = c.x - h, R = c.x + h;
+    dl->AddRectFilled(ImVec2(L, c.y - h), ImVec2(R, c.y - h * 0.62f), col);
+    dl->AddRectFilled(ImVec2(L, c.y - h * 0.16f), ImVec2(R, c.y + h * 0.16f), col);
+    dl->AddRectFilled(ImVec2(L, c.y + h * 0.62f), ImVec2(R, c.y + h), col);
+}
+
+// 方形图标按钮：内绘示意图标，tooltip 给出中文名；禁用时随样式 alpha 变暗
+bool iconButton(const char* id, const char* tip, IconFn fn) {
+    float bh = ImGui::GetFrameHeight();
+    bool clicked = ImGui::Button(id, ImVec2(bh, bh));
+    ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
+    fn(ImGui::GetWindowDrawList(), ImVec2((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f), bh * 0.32f,
+       ImGui::GetColorU32(IM_COL32(215, 222, 235, 255)));
+    ImGui::SetItemTooltip("%s", tip);
+    return clicked;
+}
+
+// 画布顶部对齐工具条：对齐/尺寸以锚点（最后点击组件）为基准；分布需 ≥3 件
+void drawAlignToolbar(PlannerContext& ctx, int selCount) {
+    bool canAlign = selCount >= 2;
+    bool canDist = selCount >= 3;
+    auto sep = [] {
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+    };
+
+    ImGui::BeginDisabled(!canAlign);
+    if (iconButton("##al", "左对齐：左缘对齐到锚点", iconAlignLeft))
+        ctx.alignSelection(AlignMode::Left);
+    ImGui::SameLine();
+    if (iconButton("##ahc", "水平居中：水平中心对齐到锚点", iconAlignHCenter))
+        ctx.alignSelection(AlignMode::HCenter);
+    ImGui::SameLine();
+    if (iconButton("##ar", "右对齐：右缘对齐到锚点", iconAlignRight))
+        ctx.alignSelection(AlignMode::Right);
+    sep();
+    if (iconButton("##at", "顶对齐：上缘对齐到锚点", iconAlignTop))
+        ctx.alignSelection(AlignMode::Top);
+    ImGui::SameLine();
+    if (iconButton("##avc", "垂直居中：垂直中心对齐到锚点", iconAlignVCenter))
+        ctx.alignSelection(AlignMode::VCenter);
+    ImGui::SameLine();
+    if (iconButton("##ab", "底对齐：下缘对齐到锚点", iconAlignBottom))
+        ctx.alignSelection(AlignMode::Bottom);
+    ImGui::EndDisabled();
+
+    sep();
+    ImGui::BeginDisabled(!canAlign);
+    if (iconButton("##ew", "等宽：宽度设为锚点宽度", iconEqualWidth))
+        ctx.sizeSelection(SizeMode::Width);
+    ImGui::SameLine();
+    if (iconButton("##eh", "等高：高度设为锚点高度", iconEqualHeight))
+        ctx.sizeSelection(SizeMode::Height);
+    ImGui::SameLine();
+    if (iconButton("##ss", "大小相同：宽高都设为锚点", iconSameSize))
+        ctx.sizeSelection(SizeMode::Both);
+    ImGui::EndDisabled();
+
+    sep();
+    ImGui::BeginDisabled(!canDist);
+    if (iconButton("##dh", "水平分布：水平等间距（保持首尾外缘）", iconDistributeH))
+        ctx.distributeSelection(true);
+    ImGui::SameLine();
+    if (iconButton("##dv", "垂直分布：垂直等间距（保持首尾外缘）", iconDistributeV))
+        ctx.distributeSelection(false);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("选中 %d 个", selCount);
+}
+
 // 拖拽手柄调整 frame（页面坐标）
 void applyResize(DragKind, Handle h, Rect& f, ImVec2 page, const CanvasView& view) {
     float left = f.x, top = f.y, right = f.x + f.w, bottom = f.y + f.h;
@@ -96,6 +229,13 @@ void drawCanvas(PlannerContext& ctx) {
     CanvasView& view = ctx.view;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 mouse = ImGui::GetIO().MousePos;
+
+    // 顶部对齐工具条（对齐/尺寸/分布）
+    int selOnPage = 0;
+    for (const auto& c : page->components)
+        if (ctx.selection.count(c.id)) ++selOnPage;
+    drawAlignToolbar(ctx, selOnPage);
+
     ImVec2 origin = ImGui::GetCursorScreenPos();
     ImVec2 avail = ImGui::GetContentRegionAvail();
     ImGui::InvisibleButton("canvas", avail,
@@ -246,6 +386,7 @@ void drawCanvas(PlannerContext& ctx) {
     }
 
     // ---- 选择叠加层 ----
+    ctx.ensureAnchor();
     Component* single = nullptr;
     if (ctx.selection.size() == 1)
         single = page->find(*ctx.selection.begin());
@@ -254,6 +395,9 @@ void drawCanvas(PlannerContext& ctx) {
         ImVec2 a = view.toScreen(c.frame.pos());
         ImVec2 b = view.toScreen(ImVec2(c.frame.x + c.frame.w, c.frame.y + c.frame.h));
         dl->AddRect(a, b, IM_COL32(80, 160, 255, 220), 0.0f, 0, 1.5f);
+        // 多选时标记锚点（对齐/尺寸基准）：左上角琥珀色圆点
+        if (ctx.selection.size() >= 2 && c.id == ctx.anchor)
+            dl->AddCircleFilled(ImVec2(a.x, a.y), 4.5f, IM_COL32(255, 196, 64, 255), 12);
         if (&c == single) {  // 单选画手柄（NW N NE E SE S SW W，与 hitHandle 一致）
             dl->AddLine(ImVec2(a.x, a.y), ImVec2(b.x, a.y), IM_COL32(80, 160, 255, 90));
             const float fx[8] = {0, 0.5f, 1, 1, 1, 0.5f, 0, 0};
@@ -287,10 +431,13 @@ void drawCanvas(PlannerContext& ctx) {
                 bool ctrl = ImGui::GetIO().KeyCtrl;
                 if (ctrl && ctx.selection.count(hit->id))
                     ctx.selection.erase(hit->id);
-                else if (ctrl)
+                else if (ctrl) {
                     ctx.selection.insert(hit->id);
-                else
+                    ctx.anchor = hit->id;  // 最后点击者为锚点
+                } else {
                     ctx.selection = {hit->id};
+                    ctx.anchor = hit->id;
+                }
                 // 开始移动拖拽
                 st.drag = DragKind::Move;
                 st.startPage = view.toPage(mouse);
@@ -355,6 +502,7 @@ void drawCanvas(PlannerContext& ctx) {
                     c.frame.y >= loPage.y && c.frame.y + c.frame.h <= hiPage.y)
                     ctx.selection.insert(c.id);
             }
+            ctx.ensureAnchor();  // 框选后保持锚点为选区成员
             break;
         }
         case DragKind::Pan: {
@@ -408,6 +556,7 @@ void drawCanvas(PlannerContext& ctx) {
         if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) ctx.doc.redo();
         if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A)) {
             for (const auto& c : page->components) ctx.selection.insert(c.id);
+            ctx.ensureAnchor();
         }
         if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C)) ctx.copySelection();
         if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V)) ctx.pasteClipboard();

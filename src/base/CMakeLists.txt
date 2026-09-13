@@ -5,6 +5,7 @@ add_library(softg_base STATIC
     appshell/FontSetup.cpp
     appshell/Theme.cpp
     log/Log.cpp
+    model/AlignOps.cpp
     model/ComponentRegistry.cpp
     model/Tag.cpp
     model/TagDatabase.cpp

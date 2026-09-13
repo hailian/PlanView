@@ -6,6 +6,7 @@ add_executable(softg_tests
     test_RuntimeEngine.cpp
     test_PacketTools.cpp
     test_FrameSource.cpp
+    test_Align.cpp
 )
 target_link_libraries(softg_tests PRIVATE softg_base)
 target_include_directories(softg_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

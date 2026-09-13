@@ -6,6 +6,32 @@
 
 namespace softg::planner {
 
+namespace {
+
+// 当前页、选中且未锁定的组件指针（页面顺序）
+std::vector<Component*> selectedUnlocked(PlannerContext& ctx) {
+    std::vector<Component*> out;
+    Page* page = ctx.currentPagePtr();
+    if (!page) return out;
+    for (auto& c : page->components)
+        if (ctx.selection.count(c.id) && !c.locked) out.push_back(&c);
+    return out;
+}
+
+const char* alignLabel(AlignMode m) {
+    switch (m) {
+    case AlignMode::Left: return "左对齐";
+    case AlignMode::HCenter: return "水平居中";
+    case AlignMode::Right: return "右对齐";
+    case AlignMode::Top: return "顶对齐";
+    case AlignMode::VCenter: return "垂直居中";
+    case AlignMode::Bottom: return "底对齐";
+    }
+    return "对齐";
+}
+
+} // namespace
+
 Component* PlannerContext::addComponent(const std::string& typeId, ImVec2 pagePos) {
     auto* reg = ComponentRegistry::instance().find(typeId);
     if (!reg) return nullptr;
@@ -27,6 +53,7 @@ Component* PlannerContext::addComponent(const std::string& typeId, ImVec2 pagePo
     c.z = page->components.empty() ? 0 : page->components.back().z + 1;
     page->components.push_back(std::move(c));
     selection = {page->components.back().id};
+    anchor = page->components.back().id;
     return &page->components.back();
 }
 
@@ -39,6 +66,7 @@ void PlannerContext::deleteSelection() {
                        [this](const Component& c) { return selection.count(c.id) > 0; }),
         page->components.end());
     selection.clear();
+    anchor.clear();
 }
 
 void PlannerContext::nudgeZOrder(int delta) {
@@ -59,6 +87,68 @@ void PlannerContext::moveSelection(ImVec2 delta) {
         c.frame.x = view.snap(c.frame.x + delta.x);
         c.frame.y = view.snap(c.frame.y + delta.y);
     }
+}
+
+void PlannerContext::ensureAnchor() {
+    if (selection.empty()) {
+        anchor.clear();
+        return;
+    }
+    Page* page = currentPagePtr();
+    if (!page) return;
+    for (auto& c : page->components)  // 锚点仍有效：在选区内、未锁定
+        if (c.id == anchor && selection.count(c.id) && !c.locked) return;
+    for (auto& c : page->components)  // 回退：选区中页面顺序第一个未锁定件
+        if (selection.count(c.id) && !c.locked) {
+            anchor = c.id;
+            return;
+        }
+}
+
+Component* PlannerContext::selectionAnchor() {
+    ensureAnchor();
+    if (anchor.empty()) return nullptr;
+    Page* page = currentPagePtr();
+    if (!page) return nullptr;
+    for (auto& c : page->components)
+        if (c.id == anchor && selection.count(c.id) && !c.locked) return &c;
+    return nullptr;
+}
+
+void PlannerContext::alignSelection(AlignMode mode) {
+    std::vector<Component*> comps = selectedUnlocked(*this);
+    if (comps.size() < 2) return;
+    Component* a = selectionAnchor();
+    if (!a) return;
+    Rect ref = a->frame;  // 副本：就地修改后仍有效
+    std::vector<Rect*> rects;
+    rects.reserve(comps.size());
+    for (Component* c : comps) rects.push_back(&c->frame);
+    doc.commit(alignLabel(mode));
+    alignRects(rects, ref, mode);
+}
+
+void PlannerContext::sizeSelection(SizeMode mode) {
+    std::vector<Component*> comps = selectedUnlocked(*this);
+    if (comps.size() < 2) return;
+    Component* a = selectionAnchor();
+    if (!a) return;
+    Rect ref = a->frame;
+    std::vector<Rect*> rects;
+    rects.reserve(comps.size());
+    for (Component* c : comps) rects.push_back(&c->frame);
+    doc.commit(mode == SizeMode::Both ? "大小相同" : mode == SizeMode::Width ? "等宽" : "等高");
+    sizeRects(rects, ref, mode);
+}
+
+void PlannerContext::distributeSelection(bool horizontal) {
+    std::vector<Component*> comps = selectedUnlocked(*this);
+    if (comps.size() < 3) return;
+    std::vector<Rect*> rects;
+    rects.reserve(comps.size());
+    for (Component* c : comps) rects.push_back(&c->frame);
+    doc.commit(horizontal ? "水平分布" : "垂直分布");
+    distributeRects(rects, horizontal);
 }
 
 Component* PlannerContext::pickAt(ImVec2 pagePos) {
@@ -99,6 +189,7 @@ void PlannerContext::pasteClipboard() {
         c.z = ++maxZ;
         page->components.push_back(std::move(c));
         selection.insert(page->components.back().id);
+        anchor = page->components.back().id;
     }
 }
 
