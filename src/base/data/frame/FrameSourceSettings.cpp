@@ -59,7 +59,7 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
             f.type = packet::FieldType::U16;
         if (int n = packet::fieldTypeBytes(f.type)) f.bytes = n;
         f.bigEndian = props::asBool(c.propOr(prefix + "bigEndian", true));
-        f.address = (int)props::asInt(c.propOr(prefix + "address", int64_t(0)));
+        f.address = (int)i; // 标签槽位 = 字段序号（自动分配；不再人工配置）
         fields.push_back(std::move(f));
     }
 }

@@ -127,8 +127,7 @@ static Json projectToJson(const Project& p) {
                                   {"tagId", f.tagId},
                                   {"offset", f.offset},
                                   {"type", packet::fieldTypeToString(f.type)},
-                                  {"bigEndian", f.bigEndian},
-                                  {"address", f.address}});
+                                  {"bigEndian", f.bigEndian}});
         }
         jf["fields"] = std::move(fields);
         settings["frame"] = std::move(jf);
@@ -341,7 +340,7 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
                         tf.type = packet::FieldType::U16;
                     if (int n = packet::fieldTypeBytes(tf.type)) tf.bytes = n;
                     tf.bigEndian = jfi.value("bigEndian", true);
-                    tf.address = jfi.value("address", 0);
+                    tf.address = 0; // 槽位由字段序号自动分配（address 已废弃，读时忽略）
                     fr.fields.push_back(std::move(tf));
                 }
             }

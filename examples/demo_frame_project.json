@@ -45,19 +45,16 @@
             "f0.offset": 0,
             "f0.type": "u16",
             "f0.bigEndian": true,
-            "f0.address": 1,
             "f1.name": "泵",
             "f1.tagId": 2,
             "f1.offset": 0,
             "f1.type": "u8",
             "f1.bigEndian": true,
-            "f1.address": 2,
             "f2.name": "液位",
             "f2.tagId": 3,
             "f2.offset": 0,
             "f2.type": "f32",
-            "f2.bigEndian": true,
-            "f2.address": 3
+            "f2.bigEndian": true
           }
         },
         {

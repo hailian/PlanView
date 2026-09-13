@@ -30,7 +30,6 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         c.setProp(p + "offset", int64_t(0));
         c.setProp(p + "type", std::string("u16"));
         c.setProp(p + "bigEndian", true);
-        c.setProp(p + "address", int64_t(count));
         c.setProp("fieldCount", int64_t(count + 1));
         ++count;
     }
@@ -49,16 +48,16 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
     }
 
     // 表格式行编辑：列头作标签、控件填满列宽，避免行内控件互相挤压截断
-    int cols = tlv ? 5 : 4;
+    //（标签槽位由字段序号自动分配，不再编辑；隐式标签按槽位合成）
+    int cols = tlv ? 4 : 3;
     if (!ImGui::BeginTable("pfields", cols, ImGuiTableFlags_SizingStretchProp |
                                              ImGuiTableFlags_RowBg))
         return;
-    ImGui::TableSetupColumn("字段名", ImGuiTableColumnFlags_WidthStretch, 2.2f);
+    ImGui::TableSetupColumn("字段名", ImGuiTableColumnFlags_WidthStretch, 2.4f);
     if (tlv)
-        ImGui::TableSetupColumn("槽位", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("槽位(hex)", ImGuiTableColumnFlags_WidthStretch, 1.0f);
     ImGui::TableSetupColumn("偏移", ImGuiTableColumnFlags_WidthStretch, 1.0f);
     ImGui::TableSetupColumn("类型", ImGuiTableColumnFlags_WidthStretch, 1.2f);
-    ImGui::TableSetupColumn("标签地址", ImGuiTableColumnFlags_WidthStretch, 1.1f);
     ImGui::TableHeadersRow();
 
     for (int i = 0; i < count; ++i) {
@@ -79,7 +78,8 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
             ImGui::SetNextItemWidth(-1);
             int64_t tagId = props::asInt(c.propOr(p + "tagId", int64_t(0)));
             int v = (int)tagId;
-            if (ImGui::InputInt("##t", &v, 0, 0)) {
+            // 槽位 = TLV 帧 T 值（报文字节），按十六进制输入/显示
+            if (ImGui::InputInt("##t", &v, 0, 0, ImGuiInputTextFlags_CharsHexadecimal)) {
                 if (ImGui::IsItemActivated()) ctx.doc.commit("字段槽位");
                 c.setProp(p + "tagId", int64_t(std::clamp(v, 0, 255)));
             }
@@ -107,15 +107,6 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
                 if (sel) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
-        }
-
-        ImGui::TableNextColumn();
-        ImGui::SetNextItemWidth(-1);
-        int64_t addr = props::asInt(c.propOr(p + "address", int64_t(0)));
-        int a = (int)addr;
-        if (ImGui::InputInt("##a", &a, 0, 0)) {
-            if (ImGui::IsItemActivated()) ctx.doc.commit("字段标签地址");
-            c.setProp(p + "address", int64_t(std::clamp(a, 0, 65535)));
         }
         ImGui::PopID();
     }

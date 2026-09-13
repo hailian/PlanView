@@ -43,13 +43,13 @@ TEST_CASE("帧数据源：UDP 回环 → 解析 → 标签值") {
     f.offset = 0; // 偏移相对该帧负载 V
     f.type = packet::FieldType::U16;
     f.bigEndian = true;
-    f.address = 1; // 对应标签槽位 1
+    f.address = 0; // 直接构造 settings 需显式槽位（自动序号仅组件解析路径）
     cfg.fields.push_back(f);
     f.name = "泵";
     f.tagId = 2;
+    f.address = 1; // 直接构造 settings 需显式槽位
     f.offset = 0;
     f.type = packet::FieldType::U8;
-    f.address = 2;
     cfg.fields.push_back(f);
 
     FrameDataSource src(cfg);
@@ -69,8 +69,8 @@ TEST_CASE("帧数据源：UDP 回环 → 解析 → 标签值") {
     CHECK(sender.send(hex("02 00 01 01"), err));
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    Tag t1 = makeTag("温度", 1, TagDataType::Float32, 0.1);
-    Tag t2 = makeTag("泵", 2, TagDataType::Bool, 1.0);
+    Tag t1 = makeTag("温度", 0, TagDataType::Float32, 0.1);
+    Tag t2 = makeTag("泵", 1, TagDataType::Bool, 1.0);
     Tag t3 = makeTag("无数据", 9, TagDataType::UInt16, 1.0);
     std::vector<const Tag*> tags = {&t1, &t2, &t3};
     auto results = src.readTags(tags);
@@ -120,7 +120,6 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
     f.tagId = 1;
     f.offset = 0;
     f.type = packet::FieldType::U16;
-    f.address = 1;
     cfg.fields.push_back(f);
 
     FrameDataSource src(cfg);
@@ -139,7 +138,7 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
     CHECK(sender.send(hex("03 00 04 41 69 99 9A"), err));
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
-    Tag t = makeTag("温度", 1, TagDataType::Float32, 1.0);
+    Tag t = makeTag("温度", 0, TagDataType::Float32, 1.0);
     std::vector<const Tag*> tags = {&t};
     auto results = src.readTags(tags);
     double eng = 0;
@@ -172,12 +171,10 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     proto.setProp("f0.offset", int64_t(4));
     proto.setProp("f0.type", std::string("f32"));
     proto.setProp("f0.bigEndian", false);
-    proto.setProp("f0.address", int64_t(7));
     proto.setProp("f1.name", std::string("计数"));
     proto.setProp("f1.tagId", int64_t(2));
     proto.setProp("f1.offset", int64_t(8));
     proto.setProp("f1.type", std::string("u32"));
-    proto.setProp("f1.address", int64_t(9));
     p.pages[0].components.push_back(proto);
 
     // 无数据源：回退工程设置（enabled=false）
@@ -209,9 +206,9 @@ TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     CHECK(s.fields[0].type == packet::FieldType::F32);
     CHECK(s.fields[0].bytes == 4);
     CHECK(s.fields[0].offset == 4);
-    CHECK(s.fields[0].address == 7);
+    CHECK(s.fields[0].address == 0); // 槽位=字段序号
     CHECK(s.fields[1].type == packet::FieldType::U32);
-    CHECK(s.fields[1].address == 9);
+    CHECK(s.fields[1].address == 1);
 
     // 协议名不存在：默认 TLV 无字段（仍可收帧监视）
     p.pages[0].components.back().setProp("protocol", std::string("不存在"));
@@ -245,7 +242,6 @@ TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {
     proto.setProp("f0.tagId", int64_t(1));
     proto.setProp("f0.offset", int64_t(0));
     proto.setProp("f0.type", std::string("f32"));
-    proto.setProp("f0.address", int64_t(1));
     p.pages[0].components.push_back(proto);
 
     // 仪表与文本组件直接绑定协议字段
@@ -265,7 +261,7 @@ TEST_CASE("隐式绑定合成：组件 bindField -> 标签 + 数据绑定") {
     CHECK(p.tags.all().size() == 1);
     const Tag* t = p.tags.find("温度");
     REQUIRE(t != nullptr);
-    CHECK(t->address == 1);
+    CHECK(t->address == 0);
     CHECK(t->type == TagDataType::Float32);
     CHECK(t->scale == 1.0);
 
@@ -321,14 +317,14 @@ TEST_CASE("帧数据源：帧头+Length 字段偏移相对负载") {
     // 两个字段 t1/t2：u8，偏移 0/1（相对负载）
     TagField f;
     f.name = "t1";
+    f.address = 0; // 直接构造 settings 需显式槽位
     f.offset = 0;
     f.type = packet::FieldType::U8;
-    f.address = 1;
     cfg.fields.push_back(f);
     f.name = "t2";
+    f.address = 1; // 直接构造 settings 需显式槽位
     f.offset = 1;
     f.type = packet::FieldType::U8;
-    f.address = 2;
     cfg.fields.push_back(f);
 
     FrameDataSource src(cfg);
@@ -344,8 +340,8 @@ TEST_CASE("帧数据源：帧头+Length 字段偏移相对负载") {
     CHECK(sender.send(hex("AA 55 00 02 03 04"), err));
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    Tag t1 = makeTag("t1", 1, TagDataType::UInt16, 1.0);
-    Tag t2 = makeTag("t2", 2, TagDataType::UInt16, 1.0);
+    Tag t1 = makeTag("t1", 0, TagDataType::UInt16, 1.0);
+    Tag t2 = makeTag("t2", 1, TagDataType::UInt16, 1.0);
     std::vector<const Tag*> tags = {&t1, &t2};
     auto results = src.readTags(tags);
     CHECK(results[0].ok);
@@ -373,7 +369,6 @@ TEST_CASE("帧数据源：断开后标签质量为不可用") {
     TagField f;
     f.name = "温度";
     f.type = packet::FieldType::U16;
-    f.address = 0;
     cfg.fields.push_back(f);
 
     FrameDataSource src(cfg);
