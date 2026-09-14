@@ -263,7 +263,27 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
             prevTagId = props::asInt(
                 cp->propOr("f" + std::to_string(count - 1) + ".tagId", int64_t(0)));
         cp->setProp(p + "tagId", prevTagId);
-        cp->setProp(p + "offset", int64_t(0));
+        // 偏移默认接续上一字段末尾（上一字段偏移 + 其字节长度）：定长类型由类型决定，
+        // string/enum 由其长度属性决定；首条为 0
+        int64_t offset = 0;
+        if (count > 0) {
+            std::string pp = "f" + std::to_string(count - 1) + ".";
+            packet::FieldType prevType = packet::FieldType::U16;
+            packet::fieldTypeFromString(
+                props::asString(cp->propOr(pp + "type", std::string("u16"))), prevType);
+            int bytes = packet::fieldTypeBytes(prevType);
+            if (bytes == 0) {
+                if (prevType == packet::FieldType::String) {
+                    bytes = (int)std::clamp<int64_t>(
+                        props::asInt(cp->propOr(pp + "len", int64_t(16))), 1, 256);
+                } else { // Enum：宽度限 1/2/4 字节
+                    int64_t w = props::asInt(cp->propOr(pp + "len", int64_t(1)));
+                    bytes = (w == 2 || w == 4) ? (int)w : 1;
+                }
+            }
+            offset = props::asInt(cp->propOr(pp + "offset", int64_t(0))) + bytes;
+        }
+        cp->setProp(p + "offset", offset);
         cp->setProp(p + "type", std::string("u16"));
         cp->setProp(p + "bigEndian", true);
         cp->setProp("fieldCount", int64_t(count + 1));
