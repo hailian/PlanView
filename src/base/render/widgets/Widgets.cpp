@@ -87,6 +87,33 @@ static double liveDouble(const RenderContext& ctx, const Component& c, const cha
 
 static ImVec2 clamp01(ImVec2 v) { return ImVec2(std::clamp(v.x, 0.0f, 1.0f), std::clamp(v.y, 0.0f, 1.0f)); }
 
+// 绑定协议字段的复合卡片（数据源信息卡同风格）：深色圆角底 + 青色左竖条 + 左上角
+// 字段名。返回 false = 未绑定（不画任何东西，调用方走原渲染）；inner = 内容区
+// （顶部让出字段名高度）。
+bool drawBindCard(ImDrawList* dl, const ScreenRect& r, const Component& c, float scale,
+                  ScreenRect& inner) {
+    std::string bf = props::asString(c.propOr("bindField", std::string()));
+    if (bf.empty()) {
+        inner = r;
+        return false;
+    }
+    std::string fieldName = bf; // bindField = "协议名/字段名" -> 取字段名
+    size_t slash = bf.find('/');
+    if (slash != std::string::npos) fieldName = bf.substr(slash + 1);
+
+    float radius = std::clamp(8.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius),
+                      ImVec2(r.Min.x + 3.5f * scale, r.Max.y - radius),
+                      kDefaultArc, 2.0f * scale);
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 10.0f * scale, r.Min.y + 5.0f * scale),
+                IM_COL32(140, 155, 180, 255), fieldName.c_str());
+    inner = ScreenRect(ImVec2(r.Min.x + 2.0f * scale, r.Min.y + 20.0f * scale), r.Max);
+    return true;
+}
+
 // ---- Label 文本 ----
 void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const RenderContext& ctx,
                float scale) {
@@ -96,44 +123,26 @@ void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     ImU32 color = props::asColor(c.propOr("color", (uint32_t)kDefaultTextFg));
     std::string align = props::asString(c.propOr("align", std::string("居中")));
 
-    std::string bindField = props::asString(c.propOr("bindField", std::string()));
-    if (bindField.empty()) { // 未绑定：纯文本渲染
+    ScreenRect area = r;
+    if (!drawBindCard(dl, r, c, scale, area)) { // 未绑定：纯文本渲染
         float tw = textWidth(text.c_str(), fontSize);
-        float th = fontSize;
         float x = r.Min.x;
         if (align == "居中")
             x = r.Min.x + (r.width() - tw) * 0.5f;
         else if (align == "右")
             x = r.Max.x - tw;
-        float y = r.Min.y + (r.height() - th) * 0.5f;
+        float y = r.Min.y + (r.height() - fontSize) * 0.5f;
         dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
         return;
     }
-
-    // 绑定协议字段：复合卡片（同数据源信息卡风格）——
-    // 左上角字段名（bindField = "协议名/字段名" 取字段名），中间数据值
-    std::string fieldName = bindField;
-    size_t slash = bindField.find('/');
-    if (slash != std::string::npos) fieldName = bindField.substr(slash + 1);
-    float radius = std::clamp(8.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
-    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
-    dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
-    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
-    // 左侧青色竖条（与数据源卡同语言，标识"协议字段驱动"）
-    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 3.5f * scale, r.Max.y - radius),
-                      kDefaultArc, 2.0f * scale);
-    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 10.0f * scale, r.Min.y + 5.0f * scale),
-                IM_COL32(140, 155, 180, 255), fieldName.c_str());
-    // 值：水平按对齐属性、垂直略下移避开字段名
+    // 绑定协议字段：复合卡片（左上角字段名由卡片绘制），值画在内容区
     float tw = textWidth(text.c_str(), fontSize);
-    float x = r.Min.x;
+    float x = area.Min.x;
     if (align == "居中")
-        x = r.Min.x + (r.width() - tw) * 0.5f;
+        x = area.Min.x + (area.width() - tw) * 0.5f;
     else if (align == "右")
-        x = r.Max.x - tw - 6.0f * scale;
-    else
-        x = r.Min.x + 10.0f * scale;
-    float y = r.Min.y + (r.height() - fontSize) * 0.5f + 7.0f * scale;
+        x = area.Max.x - tw - 6.0f * scale;
+    float y = area.Min.y + (area.height() - fontSize) * 0.5f + 3.0f * scale;
     dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
 }
 
@@ -179,8 +188,12 @@ void drawLamp(ImDrawList* dl, const ScreenRect& r, const Component& c, const Ren
         isOn = false;                  // 熄灭相位不画光晕
     }
 
-    ImVec2 center = r.center();
-    float radius = std::min(r.width(), r.height()) * 0.5f - 2.0f * scale;
+    // 绑定协议字段：复合卡片（左上角字段名），灯体缩进内容区
+    ScreenRect area = r;
+    drawBindCard(dl, r, c, scale, area);
+
+    ImVec2 center = area.center();
+    float radius = std::min(area.width(), area.height()) * 0.5f - 2.0f * scale;
 
     if (isOn) {  // 点亮光晕（两层衰减）
         dl->AddCircleFilled(center, radius * 1.7f, withAlpha(color, 26), 32);
@@ -212,8 +225,12 @@ void drawGauge(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     ImU32 arcColor = props::asColor(c.propOr("arcColor", (uint32_t)kDefaultArc));
     bool showValue = props::asBool(c.propOr("showValue", true));
 
-    ImVec2 center = r.center();
-    float radius = std::min(r.width(), r.height()) * 0.5f - 4.0f * scale;
+    // 绑定协议字段：复合卡片（左上角字段名），表盘缩进内容区
+    ScreenRect area = r;
+    drawBindCard(dl, r, c, scale, area);
+
+    ImVec2 center = area.center();
+    float radius = std::min(area.width(), area.height()) * 0.5f - 4.0f * scale;
     float trackW = 7.0f * scale;
 
     // 背景轨道弧（暗）+ 数值进度弧（亮，圆点起点随值扫过）
@@ -271,20 +288,25 @@ void drawChart(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     bool showGrid = props::asBool(c.propOr("showGrid", true));
     int spanSec = (int)props::asInt(c.propOr("spanSec", int64_t(60)));
 
-    // 卡片底 + 柔和描边
-    float radius = 8.0f * scale;
-    dl->AddRectFilled(r.Min, r.Max, IM_COL32(13, 17, 24, 200), radius);
-    dl->AddRect(r.Min, r.Max, IM_COL32(255, 255, 255, 30), radius, 0, std::max(1.0f, scale));
+    // 卡片底：绑定协议字段时走复合卡片（含字段名）；否则原卡片底
+    ScreenRect area = r;
+    if (drawBindCard(dl, r, c, scale, area)) {
+        // 卡片已画底与描边
+    } else {
+        float radius = 8.0f * scale;
+        dl->AddRectFilled(r.Min, r.Max, IM_COL32(13, 17, 24, 200), radius);
+        dl->AddRect(r.Min, r.Max, IM_COL32(255, 255, 255, 30), radius, 0, std::max(1.0f, scale));
+    }
 
-    // 网格：横线为主、竖线更淡
+    // 网格：横线为主、竖线更淡（画在内容区）
     if (showGrid) {
         for (int i = 1; i < 4; ++i) {
-            float x = r.Min.x + r.width() * i / 4.0f;
-            dl->AddLine(ImVec2(x, r.Min.y), ImVec2(x, r.Max.y), IM_COL32(255, 255, 255, 9));
+            float x = area.Min.x + area.width() * i / 4.0f;
+            dl->AddLine(ImVec2(x, area.Min.y), ImVec2(x, area.Max.y), IM_COL32(255, 255, 255, 9));
         }
         for (int i = 1; i < 4; ++i) {
-            float y = r.Min.y + r.height() * i / 4.0f;
-            dl->AddLine(ImVec2(r.Min.x, y), ImVec2(r.Max.x, y), IM_COL32(255, 255, 255, 16));
+            float y = area.Min.y + area.height() * i / 4.0f;
+            dl->AddLine(ImVec2(area.Min.x, y), ImVec2(area.Max.x, y), IM_COL32(255, 255, 255, 16));
         }
     }
 
@@ -313,9 +335,9 @@ void drawChart(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     auto toScreen = [&](const ChartPoint& p) {
         auto td = duration_cast<duration<double>>(p.t - tBegin).count();
         auto span = duration_cast<duration<double>>(tEnd - tBegin).count() + 1e-9;
-        float x = r.Min.x + (float)(td / span) * r.width();
+        float x = area.Min.x + (float)(td / span) * area.width();
         float u = (float)((std::clamp((double)p.v, minV, maxV) - minV) / (maxV - minV));
-        float y = r.Max.y - u * r.height();
+        float y = area.Max.y - u * area.height();
         return ImVec2(x, y);
     };
 
