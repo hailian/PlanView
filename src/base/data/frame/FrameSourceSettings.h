@@ -68,8 +68,10 @@ const char* defaultBindableProperty(const Component& c);
 
 // 一键生成规约字段的显示组件到页面：bool→指示灯(Lamp/isOn)，其余类型（整数/浮点/
 // string/enum）一律文本(Label/text)——数值精度与名称类都更适合文本展示，仪表按需手工
-// 添加并绑定。自动 bindField 绑定，网格排在协议组件下方（列距 180/行高 170）。
-// 同类型且已绑定同字段的组件跳过（skipped 返回跳过数）；返回新生成组件的 id 列表。
+// 添加并绑定。每个生成组件左侧附带字段名静态文本（Label/text=字段名，无绑定），
+// 组件纵向排列在协议组件下方（每行 = 名字 96 + 间距 8 + 组件，行距 56）。
+// 同类型且已绑定同字段的组件跳过（skipped 返回跳过数，跳过时不补名字文本）；
+// 返回新生成组件（含名字文本）的 id 列表。
 // 内部先快照协议组件数据再循环——push_back 扩容会使引用失效，不得边扩容边读协议组件。
 std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
                                                  const ComponentId& protoId, int& skipped);

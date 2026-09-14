@@ -164,8 +164,11 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
         return t == "bool" ? "Lamp" : "Label";
     };
 
-    const float colW = 180.0f;
-    int col = 0;
+    // 纵向排列：每行 = 字段名文本(96) + 间距(8) + 组件，行距 56
+    const float rowH = 56.0f;
+    const float nameW = 96.0f;
+    const float gap = 8.0f;
+    int row = 0;
     for (const auto& sp : specs) {
         const char* compType = mapType(sp.type);
         std::string bind = protoName + "/" + sp.name;
@@ -178,15 +181,28 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
             ++skipped;
             continue;
         }
+        const float rowY = y0 + row * rowH;
         Component nc = ComponentRegistry::createComponent(compType, proj.allocId("comp"));
         nc.name = sp.name;
-        nc.frame.x = x0 + col * colW;
-        nc.frame.y = y0;
+        nc.frame.x = x0 + nameW + gap;
+        nc.frame.y = rowY;
         nc.z = page.components.empty() ? 0 : page.components.back().z + 1;
         nc.setProp("bindField", bind);
         page.components.push_back(std::move(nc));
         created.push_back(page.components.back().id);
-        ++col;
+
+        // 组件左侧的字段名静态文本（无绑定；组件已存在跳过时不再补名字，
+        // 避免重复生成时叠字）
+        Component nl = ComponentRegistry::createComponent("Label", proj.allocId("comp"));
+        nl.name = sp.name + "·名";
+        nl.frame.x = x0;
+        nl.frame.y = rowY;
+        nl.frame.w = nameW;
+        nl.z = page.components.back().z + 1;
+        nl.setProp("text", sp.name);
+        page.components.push_back(std::move(nl));
+        created.push_back(page.components.back().id);
+        ++row;
     }
     return created;
 }

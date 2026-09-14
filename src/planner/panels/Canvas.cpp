@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 
 #include "base/model/ComponentRegistry.h"
@@ -25,6 +26,8 @@ struct CanvasState {
     Rect startFrame;        // 拖拽开始时单选组件的 frame
     std::vector<Rect> startFrames;  // 多选拖动时的初始 frame
     bool committed = false; // 本次拖拽是否已 commit（undo 粒度）
+    ComponentId pendingCollapse;  // 非空：按下多选成员未拖动，释放时折叠为单选
+    bool moved = false;     // Move 拖动中是否产生过位移
 };
 
 CanvasState& state() {
@@ -458,6 +461,10 @@ void drawCanvas(PlannerContext& ctx) {
                 else if (ctrl) {
                     ctx.selection.insert(hit->id);
                     ctx.anchor = hit->id;  // 最后点击者为锚点
+                } else if (ctx.selection.count(hit->id) && ctx.selection.size() > 1) {
+                    // 普通点击多选成员：保持选区整体拖动；若未拖动即释放，折叠为单选
+                    ctx.anchor = hit->id;
+                    st.pendingCollapse = hit->id;
                 } else {
                     ctx.selection = {hit->id};
                     ctx.anchor = hit->id;
@@ -468,6 +475,7 @@ void drawCanvas(PlannerContext& ctx) {
                 st.startFrames.clear();
                 for (const auto& c : page->components)
                     if (ctx.selection.count(c.id)) st.startFrames.push_back(c.frame);
+                st.moved = false;
                 st.committed = false;
             } else if (!hit) {
                 if (!ImGui::GetIO().KeyCtrl) ctx.selection.clear();
@@ -487,11 +495,13 @@ void drawCanvas(PlannerContext& ctx) {
         ImVec2 pagePos = view.toPage(mouse);
         switch (st.drag) {
         case DragKind::Move: {
-            if (!st.committed) {
+            ImVec2 delta(pagePos.x - st.startPage.x, pagePos.y - st.startPage.y);
+            if (std::abs(delta.x) > 0.5f || std::abs(delta.y) > 0.5f) st.moved = true;
+            if (st.moved && !st.committed) {
                 ctx.doc.commit("移动组件");
                 st.committed = true;
             }
-            ImVec2 delta(pagePos.x - st.startPage.x, pagePos.y - st.startPage.y);
+            if (!st.moved) break; // 原地未动：不写 undo 也不改坐标
             size_t i = 0;
             for (auto& c : page->components) {
                 if (!ctx.selection.count(c.id) || i >= st.startFrames.size()) continue;
@@ -542,8 +552,15 @@ void drawCanvas(PlannerContext& ctx) {
 
     // ---- 交互：释放 ----
     if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle) &&
-        st.drag != DragKind::None && st.drag != DragKind::Pan)
+        st.drag != DragKind::None && st.drag != DragKind::Pan) {
+        // 多选成员上原地点击（未拖动）：折叠为单选（与常见设计软件一致）
+        if (st.drag == DragKind::Move && !st.pendingCollapse.empty() && !st.moved) {
+            ctx.selection = {st.pendingCollapse};
+            ctx.anchor = st.pendingCollapse;
+        }
+        st.pendingCollapse = ComponentId{};
         st.drag = DragKind::None;
+    }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle) && st.drag == DragKind::Pan)
         st.drag = DragKind::None;
 
