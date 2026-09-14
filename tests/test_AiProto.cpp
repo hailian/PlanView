@@ -148,6 +148,7 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     REQUIRE(c5 != nullptr);
     CHECK(c1->typeId == "Label");
     CHECK(c1->name == "设备1状态");
+    CHECK(c1->frame.w == 176.0f && c1->frame.h == 64.0f); // 生成默认尺寸（复合卡片）
     CHECK(props::asString(c1->propOr("bindField", std::string())) == "设备协议/设备1状态");
     CHECK(c2->typeId == "Label"); // f32 浮点同样生成文本
     CHECK(props::asString(c2->propOr("bindField", std::string())) == "设备协议/设备1温度");
@@ -157,6 +158,7 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     CHECK(props::asString(c4->propOr("bindField", std::string())) == "设备协议/设备1累计量");
     CHECK(c5->typeId == "Label"); // 整数同样生成文本（仪表不再用于一键生成）
     CHECK(props::asString(c5->propOr("bindField", std::string())) == "设备协议/设备1转速");
+    CHECK(c2->frame.w == 176.0f && c2->frame.h == 64.0f);
 
     // 纵向排列：行 y 严格递增；不再生成独立的字段名文本
     for (int k = 1; k < 5; ++k) {

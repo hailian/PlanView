@@ -138,8 +138,31 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
         }
 
     // 拆帧/字段来自关联的协议配置组件（按名称匹配；缺失时用默认 TLV 无字段）
+    // 或关联的协议组（组内全部协议配置字段按顺序合并——典型 TLV 多协议按 T 值分段；
+    // 拆帧参数取组内第一个协议）
     std::string protoName = props::asString(ds->propOr("protocol", std::string()));
+    std::string groupName = props::asString(ds->propOr("group", std::string()));
     const Component* proto = nullptr;
+    std::vector<const Component*> groupProtos; // 协议组展开（按成员顺序）
+    if (!groupName.empty()) {
+        for (const auto& pg : p.pages)
+            for (const auto& c : pg.components) {
+                if (c.typeId != "ProtocolGroup" || c.name != groupName) continue;
+                int64_t n = props::asInt(c.propOr("protoCount", int64_t(0)));
+                for (int64_t i = 0; i < n; ++i) {
+                    std::string member =
+                        props::asString(c.propOr("p" + std::to_string(i) + ".name",
+                                                 std::string()));
+                    if (member.empty()) continue;
+                    for (const auto& pg2 : p.pages)
+                        for (const auto& c2 : pg2.components)
+                            if (c2.typeId == "ProtocolConfig" && c2.name == member)
+                                groupProtos.push_back(&c2);
+                }
+                break; // 重名组取首个（校验面板提示重名）
+            }
+        // 组未设置/不存在/为空：回退「关联协议」（二选一语义；组无效由校验面板提示）
+    }
     if (!protoName.empty()) {
         for (const auto& pg : p.pages)
             for (const auto& c : pg.components)
@@ -150,8 +173,20 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     }
     packet::FramingConfig framing;
     std::vector<TagField> fields;
-    if (proto)
+    if (!groupProtos.empty()) {
+        for (size_t i = 0; i < groupProtos.size(); ++i) {
+            packet::FramingConfig f;
+            std::vector<TagField> fs;
+            protocolFramingFromComponent(*groupProtos[i], f, fs);
+            if (i == 0) framing = f; // 拆帧参数取第一个成员
+            fields.insert(fields.end(), std::make_move_iterator(fs.begin()),
+                          std::make_move_iterator(fs.end()));
+        }
+        // 隐式标签槽位按合并后序号重排（协议内序号会跨协议冲突）
+        for (size_t i = 0; i < fields.size(); ++i) fields[i].address = (int)i;
+    } else if (proto) {
         protocolFramingFromComponent(*proto, framing, fields);
+    }
     s.framing = framing;
     s.fields = std::move(fields);
     return s;
@@ -191,8 +226,8 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
         return t == "bool" ? "Lamp" : "Label";
     };
 
-    // 纵向排列（行距 56）；字段名由绑定组件的复合卡片自显示（左上角），不再单独生成
-    const float rowH = 56.0f;
+    // 纵向排列（行距 72，与卡片高留 8px 呼吸）；字段名由绑定组件的复合卡片自显示
+    const float rowH = 72.0f;
     int row = 0;
     for (const auto& sp : specs) {
         const char* compType = mapType(sp.type);
@@ -208,6 +243,15 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
         }
         Component nc = ComponentRegistry::createComponent(compType, proj.allocId("comp"));
         nc.name = sp.name;
+        // 生成默认尺寸大于调色板默认：复合卡片要容纳左上字段名 + 内容区
+        //（文本 170x60，值可维持 16-18px 字号；指示灯 56x64，灯体在标题下方留足）
+        if (compType == std::string("Label")) {
+            nc.frame.w = 176.0f;
+            nc.frame.h = 64.0f;
+        } else { // Lamp
+            nc.frame.w = 56.0f;
+            nc.frame.h = 64.0f;
+        }
         nc.frame.x = x0;
         nc.frame.y = y0 + row * rowH;
         nc.z = page.components.empty() ? 0 : page.components.back().z + 1;

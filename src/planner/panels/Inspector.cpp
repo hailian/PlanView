@@ -242,6 +242,56 @@ void drawAiProtoDialog(Component& c, PlannerContext& ctx) {
     ImGui::EndPopup();
 }
 
+// 协议组组件的成员编辑区：p<i>.name 索引属性存协议配置组件名（下拉跨页候选）
+void drawProtocolGroupMembers(Component& c, PlannerContext& ctx) {
+    Component* cp = &c;
+    ImGui::Separator();
+    ImGui::TextUnformatted("组内协议（按顺序合并字段；拆帧参数取第一个）");
+    int64_t count64 = props::asInt(cp->propOr("protoCount", int64_t(0)));
+    int count = (int)std::clamp<int64_t>(count64, 0, 32);
+
+    if (ImGui::Button("添加协议")) {
+        ctx.doc.commit("协议组添加成员");
+        cp->setProp("p" + std::to_string(count) + ".name", std::string());
+        cp->setProp("protoCount", int64_t(count + 1));
+        ++count;
+    }
+    ImGui::SameLine();
+    if (count > 0 && ImGui::Button("删除末尾")) {
+        ctx.doc.commit("协议组移除成员");
+        cp->setProp("protoCount", int64_t(count - 1));
+    }
+    if (count == 0) {
+        ImGui::TextDisabled("  (空协议组：数据源关联后无字段)");
+        return;
+    }
+    for (int i = 0; i < count; ++i) {
+        std::string p = "p" + std::to_string(i) + ".";
+        ImGui::PushID(i);
+        ImGui::SetNextItemWidth(-60.0f);
+        std::string cur = props::asString(cp->propOr(p + "name", std::string()));
+        const char* preview = cur.empty() ? "(选择协议配置)" : cur.c_str();
+        if (ImGui::BeginCombo("##m", preview)) {
+            if (ImGui::Selectable("(清空)", cur.empty())) {
+                ctx.doc.commit("协议组成员");
+                cp->setProp(p + "name", std::string());
+            }
+            for (const auto& pg : ctx.project().pages)
+                for (const auto& pc : pg.components) {
+                    if (pc.typeId != "ProtocolConfig") continue;
+                    bool sel = pc.name == cur;
+                    if (ImGui::Selectable(pc.name.c_str(), sel) && !sel) {
+                        ctx.doc.commit("协议组成员");
+                        cp->setProp(p + "name", pc.name);
+                    }
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+            ImGui::EndCombo();
+        }
+        ImGui::PopID();
+    }
+}
+
 // 协议配置组件的规约字段编辑区：字段以 f<i>.* 索引属性存储（随组件快照进 undo/序列化）
 void drawProtocolFields(Component& c, PlannerContext& ctx) {
     // 指针 + 稳定 id：函数中段「生成字段组件」会 push_back 扩容使组件搬移，
@@ -439,22 +489,46 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
     ImGui::EndTable();
 }
 
-// 数据源组件的「关联协议」动态下拉：候选 = 工程内全部协议配置组件名（跨页）
+// 数据源组件的「关联协议/组」动态下拉：候选 = 工程内全部协议配置 + 协议组（跨页），
+// 二选一：选协议清组、选组清协议（存储仍分 protocol/group 两属性，类型无歧义）
 void drawProtocolSelector(Component& c, PlannerContext& ctx) {
-    std::string cur = props::asString(c.propOr("protocol", std::string()));
-    const char* preview = cur.empty() ? "(未关联)" : cur.c_str();
-    if (ImGui::BeginCombo("关联协议", preview)) {
-        if (ImGui::Selectable("(未关联)", cur.empty())) {
+    std::string proto = props::asString(c.propOr("protocol", std::string()));
+    std::string group = props::asString(c.propOr("group", std::string()));
+    // 组优先展示（与生效语义一致）
+    std::string preview = !group.empty() ? "[组] " + group
+                        : !proto.empty() ? proto
+                                         : "(未关联)";
+    if (ImGui::BeginCombo("关联协议/组", preview.c_str())) {
+        if (ImGui::Selectable("(未关联)", group.empty() && proto.empty())) {
             ctx.doc.commit("取消关联协议");
             c.setProp("protocol", std::string());
+            c.setProp("group", std::string());
         }
         for (const auto& pg : ctx.project().pages)
             for (const auto& pc : pg.components) {
                 if (pc.typeId != "ProtocolConfig") continue;
-                bool sel = pc.name == cur;
+                bool sel = group.empty() && pc.name == proto;
                 if (ImGui::Selectable(pc.name.c_str(), sel) && !sel) {
                     ctx.doc.commit("关联协议");
                     c.setProp("protocol", pc.name);
+                    c.setProp("group", std::string());
+                }
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+        bool anyGroup = false;
+        for (const auto& pg : ctx.project().pages)
+            for (const auto& pc : pg.components)
+                if (pc.typeId == "ProtocolGroup") anyGroup = true;
+        if (anyGroup) ImGui::Separator();
+        for (const auto& pg : ctx.project().pages)
+            for (const auto& pc : pg.components) {
+                if (pc.typeId != "ProtocolGroup") continue;
+                std::string item = "[组] " + pc.name;
+                bool sel = pc.name == group;
+                if (ImGui::Selectable(item.c_str(), sel) && !sel) {
+                    ctx.doc.commit("关联协议组");
+                    c.setProp("group", pc.name);
+                    c.setProp("protocol", std::string());
                 }
                 if (sel) ImGui::SetItemDefaultFocus();
             }
@@ -602,6 +676,10 @@ void drawFieldBinding(Component& c, PlannerContext& ctx) {
                     if (ImGui::Selectable(item.c_str(), sel) && !sel) {
                         ctx.doc.commit("绑定协议字段");
                         c.setProp("bindField", item);
+                        // 绑定后转复合卡片：保证最小尺寸容纳默认 18 号值
+                        //（120x32 的普通标签内容区仅 5px，值会被压到 8 号）
+                        if (c.frame.w < 176.0f) c.frame.w = 176.0f;
+                        if (c.frame.h < 64.0f) c.frame.h = 64.0f;
                     }
                     if (sel) ImGui::SetItemDefaultFocus();
                 }
@@ -688,6 +766,7 @@ void drawInspector(PlannerContext& ctx) {
         bool isSink = c->typeId == "DataSink";
         bool isComm = isDs || isSink; // 通信组件共用传输角色/端口/串口项过滤
         bool isProto = c->typeId == "ProtocolConfig";
+        bool isGroup = c->typeId == "ProtocolGroup"; // 组只关联协议，不绑字段
         std::string dsTransport = props::asString(
             c->propOr("transport", std::string(isSink ? "TCP" : "UDP")));
         bool dsTcp = dsTransport == "TCP";
@@ -704,8 +783,8 @@ void drawInspector(PlannerContext& ctx) {
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
             if (isComm) {
-                if (spec.key == "protocol" || spec.key == "source")
-                    continue; // 动态下拉（候选为协议/数据源组件名）
+                if (spec.key == "protocol" || spec.key == "source" || spec.key == "group")
+                    continue; // 动态下拉（候选为协议/数据源/协议组组件名）
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
                 // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
@@ -733,12 +812,14 @@ void drawInspector(PlannerContext& ctx) {
             if (changed) c->setProp(spec.key, v);
         }
         if (isDs)
-            drawProtocolSelector(*c, ctx); // 关联协议（动态候选）
+            drawProtocolSelector(*c, ctx); // 关联协议/组（单一下拉二选一）
+        if (c->typeId == "ProtocolGroup")
+            drawProtocolGroupMembers(*c, ctx); // 组内协议成员（索引属性）
         if (isSink)
             drawSourceSelector(*c, ctx); // 关联数据源（动态候选）
         if (isProto)
             drawProtocolFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
-        if (!isComm && !isProto)
+        if (!isComm && !isProto && !isGroup)
             drawFieldBinding(*c, ctx); // 显示组件直接绑定协议字段
     } else {
         ImGui::TextColored(ImVec4(1, 0.6f, 0.6f, 1), "未注册类型: %s", c->typeId.c_str());

@@ -34,6 +34,8 @@ void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
                   const RenderContext& ctx, float scale);
 void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
                         const RenderContext& ctx, float scale);
+void drawProtocolGroup(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                       const RenderContext& ctx, float scale);
 
 // 未知组件类型的占位绘制
 void drawUnknown(ImDrawList* dl, const ScreenRect& r, const Component& c, const RenderContext& ctx,

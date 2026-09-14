@@ -160,8 +160,14 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specInt("dataBits", "数据位", 8, 5, 8),
             specEnum("parity", "校验", "无", {"无", "奇", "偶"}),
             specInt("stopBits", "停止位", 1, 1, 2),
-            specString("protocol", "关联协议", ""), // 协议配置组件名（Inspector 动态下拉）
+            specString("protocol", "关联协议/组", ""), // 协议配置或协议组组件名（统一动态下拉）
         };
+        t.push_back(std::move(i));
+    }
+    { // 协议组（关联多个协议配置；数据源关联组后按组内字段合并解析——
+      // 典型 TLV 总线：不同协议按 T 值分段同一数据流，拆帧参数取组内第一个协议）
+        ComponentTypeInfo i{"ProtocolGroup", "协议组", "通信", {170, 84}, {}};
+        // 成员列表存 p<i>.name 索引属性（Inspector 自定义区编辑，随组件快照进 undo/序列化）
         t.push_back(std::move(i));
     }
     { // 协议配置（拆帧方式 + 规约字段；被数据源组件关联复用，

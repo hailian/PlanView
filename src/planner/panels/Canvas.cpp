@@ -342,13 +342,38 @@ void drawCanvas(PlannerContext& ctx) {
                 ImGui::SetTooltip("%s", tip.c_str());
         };
 
+        auto groupOnPage = [&](const std::string& name) -> const Component* {
+            if (name.empty()) return nullptr;
+            for (const auto& c2 : page->components)
+                if (c2.typeId == "ProtocolGroup" && c2.name == name) return &c2;
+            return nullptr;
+        };
+
         for (const auto& c : page->components) {
-            if (c.typeId == "DataSource") {  // 数据源 -> 关联协议（蓝）
+            if (c.typeId == "ProtocolGroup") { // 协议组 -> 各成员协议（绿淡）
+                int64_t n = props::asInt(c.propOr("protoCount", int64_t(0)));
+                for (int64_t i = 0; i < n; ++i) {
+                    std::string member = props::asString(
+                        c.propOr("p" + std::to_string(i) + ".name", std::string()));
+                    const Component* pc = protoOnPage(member);
+                    if (!pc) continue;
+                    ImVec2 mid = drawProtoLink(dl, view, c, *pc, IM_COL32(88, 200, 150, 170));
+                    showTip(mid, "协议组 " + c.name + " 包含: " + pc->name);
+                }
+                continue;
+            }
+            if (c.typeId == "DataSource") {  // 数据源 -> 关联协议（蓝）/ 协议组（绿）
                 std::string pn = props::asString(c.propOr("protocol", std::string()));
                 const Component* pc = protoOnPage(pn);
-                if (!pc) continue;
-                ImVec2 mid = drawProtoLink(dl, view, c, *pc, IM_COL32(96, 165, 250, 220));
-                showTip(mid, "数据源 " + c.name + " 使用协议: " + pc->name);
+                if (pc) { // 直连协议（蓝）；仅绑组时无此线，只画组线
+                    ImVec2 mid = drawProtoLink(dl, view, c, *pc, IM_COL32(96, 165, 250, 220));
+                    showTip(mid, "数据源 " + c.name + " 使用协议: " + pc->name);
+                }
+                if (const Component* grp =
+                        groupOnPage(props::asString(c.propOr("group", std::string())))) {
+                    ImVec2 m2 = drawProtoLink(dl, view, c, *grp, IM_COL32(88, 200, 150, 220));
+                    showTip(m2, "数据源 " + c.name + " 使用协议组: " + grp->name);
+                }
                 // 数据源 -> 关联的数据目的（紫）：原始帧转发
                 for (const auto& sk : page->components) {
                     if (sk.typeId != "DataSink") continue;

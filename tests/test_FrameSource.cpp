@@ -156,6 +156,68 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
     src.disconnect();
 }
 
+TEST_CASE("协议组：数据源关联组 -> 组内字段合并（拆帧取首个）") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+
+    // 协议 A：TLV u16 槽位 1；协议 B：TLV f32 槽位 2
+    Component pa = ComponentRegistry::createComponent("ProtocolConfig", "pa");
+    pa.name = "协议A";
+    pa.setProp("fieldCount", int64_t(1));
+    pa.setProp("f0.name", std::string("温度"));
+    pa.setProp("f0.tagId", int64_t(1));
+    pa.setProp("f0.type", std::string("u16"));
+    p.pages[0].components.push_back(pa);
+    Component pb = ComponentRegistry::createComponent("ProtocolConfig", "pb");
+    pb.name = "协议B";
+    pb.setProp("fieldCount", int64_t(1));
+    pb.setProp("f0.name", std::string("液位"));
+    pb.setProp("f0.tagId", int64_t(2));
+    pb.setProp("f0.type", std::string("f32"));
+    p.pages[0].components.push_back(pb);
+
+    // 协议组：成员 = 协议A、协议B
+    Component grp = ComponentRegistry::createComponent("ProtocolGroup", "grp");
+    grp.name = "泵站组";
+    grp.setProp("protoCount", int64_t(2));
+    grp.setProp("p0.name", std::string("协议A"));
+    grp.setProp("p1.name", std::string("协议B"));
+    p.pages[0].components.push_back(grp);
+
+    // 数据源：关联协议组
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("autoStart", true);
+    ds.setProp("group", std::string("泵站组"));
+    p.pages[0].components.push_back(ds);
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    CHECK(s.enabled);
+    REQUIRE(s.fields.size() == 2);        // 组内字段合并
+    CHECK(s.fields[0].name == "温度");
+    CHECK(s.fields[0].tagId == 1);
+    CHECK(s.fields[1].name == "液位");
+    CHECK(s.fields[1].tagId == 2);
+    CHECK(s.fields[0].address == 0);      // 隐式标签槽位按合并后序号
+    CHECK(s.fields[1].address == 1);
+    CHECK(s.framing.mode == packet::FrameMode::Tlv); // 拆帧取首个成员（TLV）
+
+    // 组无效且同时关联了单协议：回退单协议（二选一语义）
+    Component ds2 = p.pages[0].components.back();
+    ds2.setProp("group", std::string("不存在"));
+    ds2.setProp("protocol", std::string("协议A"));
+    p.pages[0].components.back() = ds2;
+    FrameSourceSettings fb = frameSettingsFromProject(p);
+    REQUIRE(fb.fields.size() == 1);
+    CHECK(fb.fields[0].name == "温度"); // 用的是协议A而非组
+
+    // 组有效时优先于同时设置的单协议
+    p.pages[0].components.back().setProp("group", std::string("泵站组"));
+    FrameSourceSettings both = frameSettingsFromProject(p);
+    REQUIRE(both.fields.size() == 2); // 组内两协议合并（单协议被组覆盖）
+}
+
 TEST_CASE("测试帧生成：TLV 逐字段成帧且可拆回") {
     packet::FramingConfig fr; // 默认 TLV：T1B L2B 大端
     std::vector<TagField> fields;

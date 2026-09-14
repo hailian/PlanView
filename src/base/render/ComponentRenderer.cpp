@@ -30,6 +30,7 @@ void ComponentRenderer::drawComponent(ImDrawList* dl, const Component& c, const 
     else if (c.typeId == "DataSource") drawDataSource(dl, r, c, ctx, scale);
     else if (c.typeId == "DataSink") drawDataSink(dl, r, c, ctx, scale);
     else if (c.typeId == "ProtocolConfig") drawProtocolConfig(dl, r, c, ctx, scale);
+    else if (c.typeId == "ProtocolGroup") drawProtocolGroup(dl, r, c, ctx, scale);
     else drawUnknown(dl, r, c, ctx, scale);
 
     // ---- 告警视觉统一叠加（三种样式，颜色随严重度） ----

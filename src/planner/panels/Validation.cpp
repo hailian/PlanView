@@ -83,10 +83,11 @@ void drawValidation(PlannerContext& ctx) {
         if (firstDs && autoStartCount == 0)
             issues.push_back({"数据源未设自动启动（PageViewer 打开后在顶栏手动启动数据源）",
                               firstDs->id, false});
-        // 数据源关联的协议必须存在（按名称匹配）
+        // 数据源关联的协议/协议组必须存在（按名称匹配；绑组时不再要求直连协议）
         if (firstDs) {
             std::string protoName =
                 props::asString(firstDs->propOr("protocol", std::string()));
+            std::string groupName = props::asString(firstDs->propOr("group", std::string()));
             if (!protoName.empty()) {
                 bool found = false;
                 for (const auto* pc : protocols)
@@ -94,11 +95,42 @@ void drawValidation(PlannerContext& ctx) {
                 if (!found)
                     issues.push_back({"数据源关联的协议配置不存在: " + protoName,
                                       firstDs->id, true});
-            } else {
+            } else if (groupName.empty()) {
                 issues.push_back({"数据源未关联协议配置（默认 TLV，无字段）", firstDs->id,
                                   true});
             }
+            // groupName 非空：组存在性由下方「数据源关联的协议组不存在」检查，
+            // 组内成员由「协议组包含的协议不存在」检查，此处不重复报未关联
         }
+
+        // 数据源关联的协议组须存在；组内成员协议须存在
+        for (const auto& pg : p.pages)
+            for (const auto& c : pg.components) {
+                if (c.typeId == "ProtocolGroup") {
+                    int64_t n = props::asInt(c.propOr("protoCount", int64_t(0)));
+                    for (int64_t i = 0; i < n; ++i) {
+                        std::string member = props::asString(
+                            c.propOr("p" + std::to_string(i) + ".name", std::string()));
+                        if (member.empty()) continue;
+                        bool found = false;
+                        for (const auto* pc : protocols)
+                            if (pc->name == member) found = true;
+                        if (!found)
+                            issues.push_back({"协议组包含的协议不存在: " + member, c.id,
+                                              true});
+                    }
+                    continue;
+                }
+                if (c.typeId != "DataSource") continue;
+                std::string g = props::asString(c.propOr("group", std::string()));
+                if (g.empty()) continue;
+                bool found = false;
+                for (const auto& pg2 : p.pages)
+                    for (const auto& c2 : pg2.components)
+                        if (c2.typeId == "ProtocolGroup" && c2.name == g) found = true;
+                if (!found)
+                    issues.push_back({"数据源关联的协议组不存在: " + g, c.id, true});
+            }
 
         // 数据目的：关联的数据源必须存在（按名称匹配）
         for (const auto& pg : p.pages)
@@ -132,10 +164,19 @@ void drawValidation(PlannerContext& ctx) {
         for (const auto* pc : protocols) {
             bool referenced = false;
             for (const auto& pg : p.pages)
-                for (const auto& c : pg.components)
+                for (const auto& c : pg.components) {
                     if (c.typeId == "DataSource" &&
                         props::asString(c.propOr("protocol", std::string())) == pc->name)
                         referenced = true;
+                    // 被协议组包含即视为已关联（组再由数据源使用），无需直连数据源
+                    if (c.typeId == "ProtocolGroup") {
+                        int64_t n = props::asInt(c.propOr("protoCount", int64_t(0)));
+                        for (int64_t i = 0; i < n; ++i)
+                            if (props::asString(c.propOr("p" + std::to_string(i) + ".name",
+                                                         std::string())) == pc->name)
+                                referenced = true;
+                    }
+                }
             if (!referenced)
                 issues.push_back({"协议配置未被任何数据源关联: " + pc->name, pc->id, true});
         }

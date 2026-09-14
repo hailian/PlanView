@@ -31,6 +31,26 @@ static float textWidth(const char* text, float fontSize) {
     return font()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text).x;
 }
 
+// 按最大宽度适配文本：先降字号（下限 minSize），仍超宽则截断加省略号。
+// 原地改写 text，返回实际使用的字号——保证文本始终被卡片框住。
+static float fitText(std::string& text, float fontSize, float maxW, float minSize) {
+    while (fontSize > minSize && textWidth(text.c_str(), fontSize) > maxW)
+        fontSize -= 1.0f;
+    if (textWidth(text.c_str(), fontSize) <= maxW) return fontSize;
+    auto popChar = [](std::string& t) { // 回退一个完整 UTF-8 字符
+        if (t.empty()) return;
+        t.pop_back();
+        while (!t.empty() && (unsigned char)t.back() >= 0x80 &&
+               (unsigned char)t.back() < 0xC0)
+            t.pop_back();
+    };
+    std::string ell = "…";
+    while (!text.empty() && textWidth((text + ell).c_str(), fontSize) > maxW)
+        popChar(text);
+    text += ell;
+    return fontSize;
+}
+
 // 保留原 alpha，仅缩放 RGB（f>1 提亮，f<1 压暗）
 static ImU32 shade(ImU32 c, float f) {
     ImVec4 v = ImGui::ColorConvertU32ToFloat4(c);
@@ -100,17 +120,27 @@ bool drawBindCard(ImDrawList* dl, const ScreenRect& r, const Component& c, float
     std::string fieldName = bf; // bindField = "协议名/字段名" -> 取字段名
     size_t slash = bf.find('/');
     if (slash != std::string::npos) fieldName = bf.substr(slash + 1);
+    float titleSize = fitText(fieldName, 11.0f * scale, r.width() - 24.0f * scale,
+                              9.0f * scale); // 长字段名缩号/省略，不出卡片
 
-    float radius = std::clamp(8.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
-    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
-    dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
-    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
-    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius),
-                      ImVec2(r.Min.x + 3.5f * scale, r.Max.y - radius),
-                      kDefaultArc, 2.0f * scale);
-    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 10.0f * scale, r.Min.y + 5.0f * scale),
-                IM_COL32(140, 155, 180, 255), fieldName.c_str());
-    inner = ScreenRect(ImVec2(r.Min.x + 2.0f * scale, r.Min.y + 20.0f * scale), r.Max);
+    // 指标卡：柔和圆角 + 底部渐层暗示 + 标题下细分隔线；左上角青点替代粗色条
+    float radius = std::clamp(6.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 60));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(22, 28, 40, 255), radius);
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.0f * scale);
+    // 标题行：左上小圆点（协议驱动标识）+ 字段名
+    float dotY = r.Min.y + 5.0f * scale + titleSize * 0.5f;
+    dl->AddCircleFilled(ImVec2(r.Min.x + 10.0f * scale, dotY), 2.2f * scale,
+                        withAlpha(kDefaultArc, 190), 10);
+    dl->AddText(font(), titleSize, ImVec2(r.Min.x + 17.0f * scale, r.Min.y + 5.0f * scale),
+                IM_COL32(125, 140, 168, 255), fieldName.c_str());
+    // 标题与内容间的细分隔线（不到边，留呼吸感）
+    float sepY = r.Min.y + 20.0f * scale;
+    if (r.height() > 30.0f * scale)
+        dl->AddLine(ImVec2(r.Min.x + 10.0f * scale, sepY),
+                    ImVec2(r.Max.x - 10.0f * scale, sepY), IM_COL32(255, 255, 255, 22));
+    inner = ScreenRect(ImVec2(r.Min.x + 6.0f * scale, sepY + 3.0f * scale),
+                       ImVec2(r.Max.x - 6.0f * scale, r.Max.y - 4.0f * scale));
     return true;
 }
 
@@ -135,14 +165,18 @@ void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
         dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
         return;
     }
-    // 绑定协议字段：复合卡片（左上角字段名由卡片绘制），值画在内容区
+    // 绑定协议字段：复合卡片（左上角字段名由卡片绘制），值同时适配内容区的宽与高
+    //（默认 32 高的卡片让出标题后内容区仅 12 高，须先按高度收字号再按宽度收）
+    fontSize = std::clamp(fontSize, 8.0f * scale, std::max(8.0f * scale,
+                                                           area.height() - 4.0f * scale));
+    fontSize = fitText(text, fontSize, area.width(), 8.0f * scale);
     float tw = textWidth(text.c_str(), fontSize);
     float x = area.Min.x;
     if (align == "居中")
         x = area.Min.x + (area.width() - tw) * 0.5f;
     else if (align == "右")
-        x = area.Max.x - tw - 6.0f * scale;
-    float y = area.Min.y + (area.height() - fontSize) * 0.5f + 3.0f * scale;
+        x = area.Max.x - tw;
+    float y = area.Min.y + (area.height() - fontSize) * 0.5f;
     dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
 }
 
@@ -513,6 +547,8 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::string parity = props::asString(c.propOr("parity", std::string("无")));
     int64_t stopBits = props::asInt(c.propOr("stopBits", int64_t(1)));
     std::string protocol = props::asString(c.propOr("protocol", std::string()));
+    std::string group = props::asString(c.propOr("group", std::string()));
+    std::string assocText = !group.empty() ? "[组] " + group : protocol; // 组优先展示
 
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
                 kDefaultTextFg, "数据源");
@@ -542,9 +578,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
                 IM_COL32(160, 172, 192, 255), line);
     std::snprintf(line, sizeof(line), "协议: %s",
-                  protocol.empty() ? "(未关联)" : protocol.c_str());
+                  assocText.empty() ? "(未关联)" : assocText.c_str());
     dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
-                protocol.empty() ? IM_COL32(200, 120, 90, 255) : IM_COL32(120, 150, 190, 255),
+                assocText.empty() ? IM_COL32(200, 120, 90, 255) : IM_COL32(120, 150, 190, 255),
                 line);
     // 运行态：最后一帧接收时间（设计器不显示）
     if (ctx.commStatsValid) {
@@ -644,6 +680,33 @@ void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
                     ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 68.0f * scale),
                     IM_COL32(150, 165, 185, 255), line);
     }
+}
+
+// ---- ProtocolGroup 协议组（通信组件信息卡：组内协议数 + 成员名）----
+void drawProtocolGroup(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                       const RenderContext& ctx, float scale) {
+    (void)ctx;
+    float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(18, 30, 28, 255), radius); // 偏绿底
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 4.0f * scale, r.Max.y - radius),
+                      IM_COL32(88, 200, 150, 255), 2.0f * scale); // 绿色竖条
+
+    int64_t count = props::asInt(c.propOr("protoCount", int64_t(0)));
+    dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
+                kDefaultTextFg, "协议组");
+    char line[128];
+    std::snprintf(line, sizeof(line), "%lld 协议", (long long)count);
+    dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
+                IM_COL32(160, 190, 175, 255), line);
+    // 首个成员名预览（重名/空成员由校验面板提示）
+    std::string first = props::asString(c.propOr("p0.name", std::string()));
+    std::snprintf(line, sizeof(line), "%s%s", first.empty() ? "(空)" : first.c_str(),
+                  count > 1 ? " …" : "");
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
+                IM_COL32(120, 170, 145, 255), line);
 }
 
 // ---- 未知类型占位 ----

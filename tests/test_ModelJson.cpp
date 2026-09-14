@@ -188,7 +188,7 @@ TEST_CASE("标签库唯一性") {
 
 TEST_CASE("组件注册表") {
     auto& reg = ComponentRegistry::instance();
-    CHECK(reg.all().size() == 12); // 9 基础组件 + 数据源/协议配置（通信）
+    CHECK(reg.all().size() == 13); // 9 基础组件 + 数据源/协议配置（通信）
     REQUIRE(reg.find("Gauge") != nullptr);
     CHECK(reg.find("Gauge")->displayName == "仪表");
     CHECK(reg.find("NoSuchType") == nullptr);
