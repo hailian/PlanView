@@ -95,6 +95,21 @@ FrameDataSource::FrameDataSource(FrameSourceSettings settings) : cfg_(std::move(
     // 固定长度类型的字节数以类型为准
     for (auto& f : cfg_.fields)
         if (int n = packet::fieldTypeBytes(f.type)) f.bytes = n;
+    // 解析值缓存按 address 去重分组（同地址多字段共享一组槽位，顺序写入后到者覆盖）
+    groupOf_.resize(cfg_.fields.size());
+    for (size_t fi = 0; fi < cfg_.fields.size(); ++fi) {
+        int addr = cfg_.fields[fi].address;
+        int g = -1;
+        for (size_t k = 0; k < groupAddr_.size(); ++k)
+            if (groupAddr_[k] == addr) g = (int)k;
+        if (g < 0) {
+            groupAddr_.push_back(addr);
+            g = (int)groupAddr_.size() - 1;
+        }
+        groupOf_[fi] = g;
+    }
+    latestByGroup_.resize(groupAddr_.size());
+    groupSet_.assign(groupAddr_.size(), 0);
 }
 
 FrameDataSource::~FrameDataSource() { disconnect(); }
@@ -111,6 +126,9 @@ bool FrameDataSource::connect(std::string& err) {
         splitter_.setConfig(cfg_.framing);
         flows_.setConfig(cfg_.framing);
     }
+    // 分组计数向量按拆帧配置数就位（重连不重置：与 matchedFrames_ 累计口径一致）
+    if (matchedByIdx_.size() != framings_.size())
+        matchedByIdx_.assign(framings_.size(), 0);
     if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
         return serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
                             cfg_.stopBits, err);
@@ -145,7 +163,7 @@ void FrameDataSource::disconnect() {
     pcap_.stop();
     flows_.reset();
     std::lock_guard<std::mutex> lock(mutex_);
-    latestValue_.clear();
+    std::fill(groupSet_.begin(), groupSet_.end(), 0); // 解析值随连接失效
 }
 
 bool FrameDataSource::isConnected() const {
@@ -196,6 +214,9 @@ void FrameDataSource::pumpFrames() {
 
     if (frames.empty()) return;
 
+    // 时间戳按批共用：显示为 HH:MM:SS 秒级，逐帧调 localtime_s 是热路径无谓开销
+    std::string ts = nowTimeText();
+
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& frame : frames) {
         // 结构解析：TLV 模式按 T 匹配字段、偏移相对负载；帧头+Length 相对整帧。
@@ -215,30 +236,39 @@ void FrameDataSource::pumpFrames() {
         }
         bool matched = false; // 符合协议：成帧且至少一个字段可解出
         if (structured) {
-            for (const auto& f : cfg_.fields) {
+            for (size_t fi = 0; fi < cfg_.fields.size(); ++fi) {
+                const TagField& f = cfg_.fields[fi];
                 if (cfg_.framing.mode == packet::FrameMode::Tlv && f.tagId != tagId)
                     continue; // TLV：字段按槽位标识匹配帧
                 if (cfg_.framings.size() > 1 && f.framingIndex != matchedIdx)
                     continue; // 多帧头：字段只由其归属协议的帧驱动
                 TagValue val;
                 if (fieldValue(f, payload, payloadLen, val)) {
-                    latestValue_[f.address] = std::move(val); // 同槽位多字段：后到者覆盖
+                    int g = groupOf_[fi];
+                    latestByGroup_[g] = std::move(val); // 同槽位多字段：后到者覆盖
+                    groupSet_[g] = 1;
                     matched = true;
                 }
             }
         }
-        lastFrameTime_ = nowTimeText(); // 统计与日志共用同一接收时刻
+        lastFrameTime_ = ts;
         if (matched) {
             ++matchedFrames_;
-            ++matchedByIdx_[matchedIdx]; // 各帧头归属分别计数（协议卡显示自己的）
+            if (matchedIdx < (int)matchedByIdx_.size())
+                ++matchedByIdx_[matchedIdx]; // 各帧头归属分别计数（协议卡显示自己的）
         }
+        // 转发队列持有原帧缓冲（move 零拷贝）；监视日志留独立副本、满 200 裁最旧。
+        // 两条队列解耦：高帧率下日志裁剪不得波及数据目的转发
         FrameLogEntry e;
-        e.timeText = lastFrameTime_;
-        e.data = std::move(frame);
+        e.timeText = ts;
+        e.data = frame;
         frameLog_.push_back(std::move(e));
+        while (frameLog_.size() > 200)
+            frameLog_.pop_front();
+        forward_.push_back(std::move(frame));
+        while (forward_.size() > 100000)
+            forward_.pop_front(); // 防御性上限（worker 停摆时防内存无限增长）
     }
-    while (frameLog_.size() > 200)
-        frameLog_.pop_front();
 }
 
 std::vector<TagReadResult> FrameDataSource::readTags(const std::vector<const Tag*>& tags) {
@@ -252,14 +282,17 @@ std::vector<TagReadResult> FrameDataSource::readTags(const std::vector<const Tag
         TagReadResult& r = results[i];
         r.tag = t->name;
 
-        auto it = latestValue_.find(t->address);
-        if (it == latestValue_.end()) {
+        // address → 地址组（字段数有限，线性扫描即可；未收到数据 = Bad）
+        int g = -1;
+        for (size_t k = 0; k < groupAddr_.size(); ++k)
+            if (groupAddr_[k] == t->address) g = (int)k;
+        if (g < 0 || !groupSet_[g]) {
             r.ok = false;
             r.quality = TagQuality::Bad;
             r.error = "等待报文数据";
             continue;
         }
-        const TagValue& raw = it->second;
+        const TagValue& raw = latestByGroup_[g];
         if (auto* s = std::get_if<std::string>(&raw)) {
             r.value = *s; // 字符串/枚举名：直通
         } else if (auto* b = std::get_if<bool>(&raw)) {
@@ -296,6 +329,14 @@ void FrameDataSource::drainFrameLog(std::deque<FrameLogEntry>& out) {
     }
 }
 
+void FrameDataSource::drainForwardFrames(std::deque<std::vector<uint8_t>>& out) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    while (!forward_.empty()) {
+        out.push_back(std::move(forward_.front()));
+        forward_.pop_front();
+    }
+}
+
 std::string FrameDataSource::lastFrameTimeText() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return lastFrameTime_;
@@ -308,7 +349,10 @@ uint64_t FrameDataSource::matchedFrameCount() const {
 
 std::map<int, uint64_t> FrameDataSource::matchedFrameCountByIndex() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return matchedByIdx_;
+    std::map<int, uint64_t> out;
+    for (size_t k = 0; k < matchedByIdx_.size(); ++k)
+        out[(int)k] = matchedByIdx_[k];
+    return out;
 }
 
 } // namespace pv

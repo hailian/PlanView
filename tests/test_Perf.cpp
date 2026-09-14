@@ -125,8 +125,8 @@ TEST_CASE("性能：协议解析管线（拆帧+结构解+字段解析）") {
     double mbps = (double)streamLen / sec / 1024.0 / 1024.0;
     std::printf("    [perf] 协议解析 %.0f 帧/秒（%.1f MB/s；%dB/帧 × %d 帧，耗时 %.0f ms）\n",
                 fps, mbps, (int)frames[0].size(), N, sec * 1000.0);
-    // 本机 x64-release 参考约 14.8 万帧/秒（5.1 MB/s）；下限取约 1/7，防数量级退化
-    CHECK(fps >= 20000.0);
+    // 本机 x64-release 参考约 24 万帧/秒（8.5 MB/s）；下限取约 1/8，防数量级退化
+    CHECK(fps >= 30000.0);
 }
 
 TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
@@ -138,10 +138,10 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
     std::vector<TagField> fields;
     makeSampleSpec(fr, fields);
 
-    const int N = 10000;
-    // 分批发送+转发：批须小于帧日志上限 200（FrameDataSource::pumpFrames 会裁剪最旧
-    // 日志，批量超过上限未 drain 即丢帧）；批间短暂间隙让收包线程跟上，避免突发
-    // 溢出内核收包缓冲造成 UDP 丢包（丢包非转发语义，性能测试须零丢失对账）
+    const int N = 20000;
+    // 分批发送+转发：小批量突发 + 批间短间隙，避免溢出内核收包缓冲造成 UDP 丢包
+    //（丢包属传输而非转发语义，性能测试须零丢失对账；转发队列已与 200 条上限的
+    // 监视日志解耦，批量本身不再受日志上限约束）
     const int batch = 100;
     auto frames = generateTestFrames(fr, fields, N, 11);
     REQUIRE(frames.size() == (size_t)N);
@@ -194,7 +194,6 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
 
     uint64_t received = 0, rxBytes = 0;
     bool firstByteIdentical = false;
-    std::deque<FrameDataSource::FrameLogEntry> log;
     std::deque<packet::UdpPacket> rx;
     auto drainRx = [&]() {
         receiver.drain(rx);
@@ -215,11 +214,12 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
         // 定时器分辨率 ~15.6ms，1ms 的睡眠实际睡一个量子，吞吐会被压在定时器上
         auto gapEnd = std::chrono::steady_clock::now() + std::chrono::microseconds(300);
         while (std::chrono::steady_clock::now() < gapEnd) std::this_thread::yield();
-        // PollWorker 同款路径：readTags 驱动收包+解析，帧日志经数据目的原样转发
+        // PollWorker 同款路径：readTags 驱动收包+解析，转发队列经数据目的原样转发
+        //（转发已与 200 条上限的监视日志解耦，走专用 drainForwardFrames）
         (void)src.readTags(tagPtrs);
-        src.drainFrameLog(log);
-        for (const auto& e : log) CHECK(sink.send(e.data, err));
-        log.clear();
+        std::deque<std::vector<uint8_t>> toForward;
+        src.drainForwardFrames(toForward);
+        for (const auto& f : toForward) CHECK(sink.send(f, err));
         drainRx();
     }
     // 收尾：接收端收包线程异步，轮询等齐（上限 2s；超时即丢包，对账 CHECK 会报）

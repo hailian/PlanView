@@ -106,12 +106,14 @@ std::vector<ParsedField> parsePacket(const std::vector<PacketField>& fields,
             continue;
         }
         const uint8_t* p = payload.data() + f.offset;
+        // 查表拼 hex（与 bytesToHex 同法）：逐字节 snprintf 是解析热路径的主要开销
+        static const char kHex[] = "0123456789ABCDEF";
         r.rawHex.clear();
-        char hex[4];
+        r.rawHex.reserve((size_t)bytes * 3 - 1);
         for (int i = 0; i < bytes; ++i) {
-            std::snprintf(hex, sizeof(hex), "%02X", p[i]);
-            r.rawHex += (i ? " " : "");
-            r.rawHex += hex;
+            if (i) r.rawHex += ' ';
+            r.rawHex += kHex[p[i] >> 4];
+            r.rawHex += kHex[p[i] & 0xF];
         }
         r.ok = true;
 

@@ -124,6 +124,9 @@ void UdpLink::setRemote(const std::string& host, int port) {
     std::lock_guard<std::mutex> lock(mutex_);
     remoteHost_ = host;
     remotePort_ = port;
+    // 解析一次缓存：合法 IPv4 文本才有效（非法时 send 报错，不再逐包重试解析）
+    in_addr a{};
+    remoteAddr_ = ::inet_pton(AF_INET, host.c_str(), &a) == 1 ? a.s_addr : 0;
 }
 
 bool UdpLink::send(const std::vector<uint8_t>& data, std::string& err) {
@@ -131,11 +134,19 @@ bool UdpLink::send(const std::vector<uint8_t>& data, std::string& err) {
         err = "UDP 未启动，请先绑定本地端口";
         return false;
     }
-    sockaddr_in addr{};
+    uint32_t addrNet = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!fillAddr(remoteHost_, remotePort_, addr, err)) return false;
+        addrNet = remoteAddr_;
     }
+    if (addrNet == 0) {
+        err = "UDP 远端地址无效: " + remoteHost_;
+        return false;
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((u_short)remotePort_);
+    addr.sin_addr.s_addr = addrNet;
     int n = ::sendto((SOCKET)sock_, (const char*)data.data(), (int)data.size(), 0,
                      (sockaddr*)&addr, sizeof(addr));
     if (n == SOCKET_ERROR) {

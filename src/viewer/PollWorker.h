@@ -64,7 +64,8 @@ private:
         std::chrono::steady_clock::time_point nextTry{}; // 断线后的下次重试时刻
     };
     void connectSink(SinkLink& sk, std::string& err);
-    void forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>& frames);
+    // 转发原始帧（来自 FrameDataSource 的专用转发队列，与监视日志解耦）
+    void forwardFrames(const std::deque<std::vector<uint8_t>>& frames);
 
     std::thread thread_;
     std::atomic<bool> stopFlag_{false};

@@ -182,10 +182,14 @@ void PollWorker::run() {
                 matchedByIdx_ = frameSource_->matchedFrameCountByIndex();
             }
             matchedFrames_.store(frameSource_->matchedFrameCount());
+            // 转发走专用队列：监视日志有 200 条 UI 上限，高帧率下会裁剪，
+            // 数据目的转发不得依赖它（否则持续丢帧）
+            std::deque<std::vector<uint8_t>> toForward;
+            frameSource_->drainForwardFrames(toForward);
+            if (!toForward.empty()) forwardFrames(toForward);
             std::deque<FrameDataSource::FrameLogEntry> frames;
             frameSource_->drainFrameLog(frames);
             if (!frames.empty()) {
-                forwardFrames(frames);
                 std::lock_guard<std::mutex> g(m_);
                 for (auto& f : frames) {
                     frameLog_.push_back(std::move(f));
@@ -236,7 +240,7 @@ void PollWorker::connectSink(SinkLink& sk, std::string& err) {
 }
 
 // 把数据源收到的原始帧原样转发到各 sink（尽力而为：断线丢帧、2s 退避重连）
-void PollWorker::forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>& frames) {
+void PollWorker::forwardFrames(const std::deque<std::vector<uint8_t>>& frames) {
     if (sinks_.empty()) return;
     auto now = std::chrono::steady_clock::now();
     for (auto& sk : sinks_) {
@@ -250,13 +254,13 @@ void PollWorker::forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>&
             }
         }
         bool ok = true;
-        for (const auto& f : frames) {
+        for (const auto& f : frames) { // 队列元素即原始帧字节
             if (sk.cfg.serial)
-                ok = sk.serial->send(f.data, err) && ok;
+                ok = sk.serial->send(f, err) && ok;
             else if (sk.cfg.udp)
-                ok = sk.udp->send(f.data, err) && ok;
+                ok = sk.udp->send(f, err) && ok;
             else
-                ok = sk.tcp->send(f.data, err) && ok;
+                ok = sk.tcp->send(f, err) && ok;
             if (!ok) break;
         }
         if (!ok) { // 断线：关链路，等下批帧再重连

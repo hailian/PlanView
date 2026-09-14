@@ -43,6 +43,11 @@ public:
     // 报文监视：取走最近的原始帧（worker 线程调用后转发给 UI）
     void drainFrameLog(std::deque<FrameLogEntry>& out);
 
+    // 数据目的转发：取走待转发的全部原始帧。与报文监视日志**解耦**——
+    // 监视日志有 200 条 UI 上限，高帧率下会裁剪，转发功能不得因此丢帧
+    //（队列仅由 worker 周期 drain，防御性上限 10 万条，超限丢最旧=尽力而为语义）
+    void drainForwardFrames(std::deque<std::vector<uint8_t>>& out);
+
     // 运行统计（画布卡片显示；线程安全）
     std::string lastFrameTimeText() const; // 最后一帧接收时间 HH:MM:SS（空 = 未收到）
     uint64_t matchedFrameCount() const;    // 符合协议的帧计数（成帧且命中至少一字段）
@@ -62,12 +67,19 @@ private:
     // 协议组多帧头（含单配置回退）；命中索引供字段归属过滤
     std::vector<packet::FramingConfig> framings_;
 
-    mutable std::mutex mutex_; // 统计 getter 为 const 读
-    std::map<int, TagValue> latestValue_;     // 标签槽位 → 最新解析值（数值/布尔/文本）
-    std::deque<FrameLogEntry> frameLog_;
+    mutable std::mutex mutex_;                // 统计 getter 为 const 读
+    // 解析值缓存按「地址组」存 vector（构造时按 cfg_.fields 的 address 去重分组），
+    // 逐帧解析只写 vector 槽位，避免热路径逐字段做 map 运算；顺序写入天然
+    // "后到者覆盖"，与旧版 latestValue_[address] 逐字段覆盖语义一致
+    std::vector<int> groupAddr_;              // 地址组 → 标签槽位 address
+    std::vector<int> groupOf_;                // 字段序号 → 地址组序号
+    std::vector<TagValue> latestByGroup_;     // 地址组 → 最新解析值（数值/布尔/文本）
+    std::vector<uint8_t> groupSet_;           // 地址组是否已有值（无数据 = Bad）
+    std::deque<FrameLogEntry> frameLog_;      // 报文监视（上限 200，UI 观测用）
+    std::deque<std::vector<uint8_t>> forward_;// 待转发原始帧（数据目的；与监视日志解耦）
     std::string lastFrameTime_;               // 最后一帧接收时间（HH:MM:SS）
     uint64_t matchedFrames_ = 0;              // 符合协议的帧计数（成帧且命中至少一字段）
-    std::map<int, uint64_t> matchedByIdx_;    // 同上，按 framingIndex 分组（协议组）
+    std::vector<uint64_t> matchedByIdx_;      // 同上，按 framingIndex 分组（协议组）
 };
 
 } // namespace pv

@@ -1215,6 +1215,60 @@ TEST_CASE("帧数据源：布尔/字符串/枚举字段 → 标签值") {
     src.disconnect();
 }
 
+TEST_CASE("帧日志裁剪不影响数据目的转发队列") {
+    // 回归：转发曾搭在 200 条上限的监视日志上，单次 pump 超过 200 帧即丢转发帧。
+    // 解耦后转发队列必须拿到全部帧，监视日志仍保持最近 200 条
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = true;
+    cfg.localPort = 59362;
+    cfg.remotePort = 59362;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59362 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("127.0.0.1", 59362);
+
+    // 分 5 批 × 100 帧发送（批间间歇防内核收包缓冲溢出），期间不 pump：
+    // 500 帧全部到齐后单次 readTags 触发一次 pump
+    for (int b = 0; b < 5; ++b) {
+        for (int i = 0; i < 100; ++i)
+            CHECK(sender.send(hex("01 00 02 01 F4"), err));
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    Tag t = makeTag("温度", 0, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t};
+    (void)src.readTags(tags); // 单次 pump 全部 500 帧
+
+    std::deque<std::vector<uint8_t>> fwd;
+    src.drainForwardFrames(fwd);
+    CHECK(fwd.size() == 500);  // 转发队列：一帧不少
+    if (!fwd.empty())
+        CHECK(packet::bytesToHex(fwd.front()) == "01 00 02 01 F4");
+    std::deque<FrameDataSource::FrameLogEntry> log;
+    src.drainFrameLog(log);
+    CHECK(log.size() == 200); // 监视日志：仍是最多 200 条
+    CHECK(src.matchedFrameCount() == 500);
+
+    sender.stop();
+    src.disconnect();
+}
+
 TEST_CASE("隐式绑定合成：布尔/枚举字段 → 标签类型") {
     Project p;
     Page pg;

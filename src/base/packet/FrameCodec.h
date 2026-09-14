@@ -45,7 +45,10 @@ public:
     void feed(const uint8_t* data, size_t len, std::vector<std::vector<uint8_t>>& out);
 
     // 清空接收缓冲（连接重建时调用）
-    void reset() { buf_.clear(); }
+    void reset() {
+        buf_.clear();
+        head_ = 0;
+    }
 
 private:
     // 尝试从 buf_ 头部拆出一帧；返回 true 表示已拆出（帧存入 out）
@@ -58,6 +61,8 @@ private:
     FramingConfig cfg_;                 // 主配置（TLV 语义 / 单配置）
     std::vector<FramingConfig> cfgs_;   // 多帧头集合（空 = 单配置模式）
     std::vector<uint8_t> buf_;
+    size_t head_ = 0;                   // 已消费前缀长度：取帧只推进 head_，feed 收尾统一前移，
+                                        // 避免每拆一帧就整体 memmove 剩余缓冲（O(n²) 退化）
 };
 
 // 单帧结构解析（UDP 数据报 / 已拆出的完整帧共用）：

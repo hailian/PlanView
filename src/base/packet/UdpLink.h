@@ -52,8 +52,11 @@ private:
     std::thread thread_;
     std::mutex mutex_;
     std::deque<UdpPacket> inbox_;
-    std::string remoteHost_ = "127.0.0.1";
+    std::string remoteHost_ = "127.0.0.1"; // 原文本（错误提示用）
     int remotePort_ = 0;
+    // setRemote 时解析一次缓存（网络序），send 逐包只做 sendto——
+    // 高帧率转发下逐包 inet_pton 是纯浪费
+    uint32_t remoteAddr_ = 0; // INADDR 网络序（0 = 未解析/无效）
     std::string filterIp_ = "*"; // 监听过滤：源 IP（"*" 通配）
     int filterPort_ = 0;         // 监听过滤：源端口（0 不限）
 };

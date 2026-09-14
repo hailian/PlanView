@@ -26,14 +26,17 @@ bool startsWith(const std::vector<uint8_t>& buf, size_t pos,
 } // namespace
 
 void FrameSplitter::setConfig(const FramingConfig& config) {
-    if (config.mode != cfg_.mode || config.header != cfg_.header)
+    if (config.mode != cfg_.mode || config.header != cfg_.header) {
         buf_.clear(); // 帧结构变化后旧缓冲不再可信
+        head_ = 0;
+    }
     cfg_ = config;
     cfgs_.clear(); // 回到单配置模式
 }
 
 void FrameSplitter::setConfigs(const std::vector<FramingConfig>& configs) {
     buf_.clear();
+    head_ = 0;
     cfgs_ = configs;
     if (!cfgs_.empty()) cfg_ = cfgs_.front(); // 主配置 = 首条（报文监视等兼容读）
 }
@@ -43,61 +46,72 @@ void FrameSplitter::feed(const uint8_t* data, size_t len,
     buf_.insert(buf_.end(), data, data + len);
     while (tryExtract(out)) {
     }
+    // 收尾一次性前移已消费前缀：取帧期间只推进 head_，不做逐帧 memmove
+    if (head_ > 0) {
+        buf_.erase(buf_.begin(), buf_.begin() + (std::ptrdiff_t)head_);
+        head_ = 0;
+    }
     // 缓冲上限保护：防止失步且无法同步时无限增长
     int maxLen = cfg_.maxFrameLen;
     for (const auto& c : cfgs_) maxLen = std::max(maxLen, c.maxFrameLen);
     size_t cap = (size_t)maxLen * 2 + 1024;
     if (buf_.size() > cap)
-        buf_.erase(buf_.begin(), buf_.end() - cap);
+        buf_.erase(buf_.begin(), buf_.end() - (std::ptrdiff_t)cap);
 }
 
-// 丢弃缓冲头部以重新对齐；返回丢弃字节数（0 = 缓冲整体是帧头前缀，需等更多数据）
+// 丢弃已消费头部之后的数据以重新对齐；返回丢弃字节数
+//（0 = 缓冲整体是帧头前缀，需等更多数据）
 size_t FrameSplitter::resync() {
     if (cfg_.mode == FrameMode::HeaderLength && !cfg_.header.empty()) {
         // 先找下一个完整帧头位置
-        for (size_t i = 1; i < buf_.size(); ++i) {
+        for (size_t i = head_ + 1; i < buf_.size(); ++i) {
             if (startsWith(buf_, i, cfg_.header)) {
-                buf_.erase(buf_.begin(), buf_.begin() + i);
-                return i;
+                size_t discarded = i - head_;
+                head_ = i;
+                return discarded;
             }
         }
         // 没有完整帧头：保留末尾可能构成帧头前缀的最长部分
-        size_t maxKeep = std::min(buf_.size(), cfg_.header.size() - 1);
+        size_t avail = buf_.size() - head_;
+        size_t maxKeep = std::min(avail, cfg_.header.size() - 1);
         for (size_t keep = maxKeep; keep >= 1; --keep) {
             if (std::equal(buf_.end() - keep, buf_.end(), cfg_.header.begin())) {
-                size_t discard = buf_.size() - keep;
-                buf_.erase(buf_.begin(), buf_.begin() + discard);
+                size_t discard = avail - keep;
+                head_ = buf_.size() - keep;
                 return discard;
             }
         }
-        buf_.clear(); // 连帧头前缀都不是
-        return 1;     // 视为有进展（缓冲已清空）
+        head_ = buf_.size(); // 连帧头前缀都不是：全部丢弃
+        return avail == 0 ? 1 : avail; // 视为有进展（已消费空）
     }
-    buf_.erase(buf_.begin()); // TLV 无同步特征，逐字节滑动
+    ++head_; // TLV 无同步特征，逐字节滑动
     return 1;
 }
 
 bool FrameSplitter::tryExtract(std::vector<std::vector<uint8_t>>& out) {
+    size_t avail = buf_.size() - head_; // head_ <= buf_.size() 恒成立
+
     // ---- 多帧头（协议组）：从头部逐帧头匹配，命中者按其 length 语义取帧 ----
     if (!cfgs_.empty()) {
-        if (buf_.empty()) return false;
+        if (avail == 0) return false;
         for (const auto& cfg : cfgs_) {
-            if (!startsWith(buf_, 0, cfg.header)) continue;
+            if (!startsWith(buf_, head_, cfg.header)) continue;
             const int lenFieldEnd = cfg.lenOffset + cfg.lenBytesHeader;
             if (cfg.lenOffset < 0 || cfg.lenBytesHeader < 1 || cfg.lenBytesHeader > 4 ||
                 cfg.lenOffset > (int)cfg.header.size())
                 continue; // 该配置非法，试下一个
-            if (buf_.size() < (size_t)lenFieldEnd) return false; // 帧头命中，等长度字段
-            uint64_t len = readUint(buf_.data() + cfg.lenOffset, cfg.lenBytesHeader,
+            if (avail < (size_t)lenFieldEnd) return false; // 帧头命中，等长度字段
+            uint64_t len = readUint(buf_.data() + head_ + cfg.lenOffset, cfg.lenBytesHeader,
                                     cfg.bigEndianHeader);
             uint64_t total = cfg.lenIncludesAll ? len : (uint64_t)lenFieldEnd + len;
             if (total < (uint64_t)lenFieldEnd || total > (uint64_t)cfg.maxFrameLen) {
                 resyncMulti(); // 长度非法：按失步处理
                 return true;
             }
-            if (buf_.size() < total) return false; // 不完整，等更多数据
-            out.emplace_back(buf_.begin(), buf_.begin() + (int)total);
-            buf_.erase(buf_.begin(), buf_.begin() + (int)total);
+            if (avail < total) return false; // 不完整，等更多数据
+            out.emplace_back(buf_.begin() + (std::ptrdiff_t)head_,
+                             buf_.begin() + (std::ptrdiff_t)(head_ + total));
+            head_ += (size_t)total;
             return true;
         }
         size_t discarded = resyncMulti(); // 无帧头命中
@@ -105,39 +119,41 @@ bool FrameSplitter::tryExtract(std::vector<std::vector<uint8_t>>& out) {
     }
 
     if (cfg_.mode == FrameMode::Tlv) {
-        int head = cfg_.tagBytes + cfg_.lenBytes;
+        int hl = cfg_.tagBytes + cfg_.lenBytes;
         if (cfg_.tagBytes < 1 || cfg_.tagBytes > 4 || cfg_.lenBytes < 1 || cfg_.lenBytes > 4)
             return false; // 参数非法，不消费
-        if ((int)buf_.size() < head)
+        if (avail < (size_t)hl)
             return false;
-        uint64_t len = readUint(buf_.data() + cfg_.tagBytes, cfg_.lenBytes, cfg_.bigEndian);
+        uint64_t len = readUint(buf_.data() + head_ + cfg_.tagBytes, cfg_.lenBytes,
+                                cfg_.bigEndian);
         if (cfg_.lenIncludesHeader)
-            len = len > (uint64_t)head ? len - head : 0;
+            len = len > (uint64_t)hl ? len - hl : 0;
         if (len > (uint64_t)cfg_.maxFrameLen) {
             resync();
             return true; // 已消费 1 字节，继续尝试
         }
-        if ((int)buf_.size() < head + (int)len)
+        if (avail < (size_t)hl + len)
             return false; // 不完整，等更多数据
-        out.emplace_back(buf_.begin(), buf_.begin() + head + (int)len);
-        buf_.erase(buf_.begin(), buf_.begin() + head + (int)len);
+        out.emplace_back(buf_.begin() + (std::ptrdiff_t)head_,
+                         buf_.begin() + (std::ptrdiff_t)(head_ + hl + len));
+        head_ += (size_t)hl + (size_t)len;
         return true;
     }
 
     // ---- 帧头+Length ----
-    if (buf_.empty())
+    if (avail == 0)
         return false;
     const int lenFieldEnd = cfg_.lenOffset + cfg_.lenBytesHeader;
     if (cfg_.lenOffset < 0 || cfg_.lenBytesHeader < 1 || cfg_.lenBytesHeader > 4 ||
         cfg_.lenOffset > (int)cfg_.header.size())
         return false; // 参数非法
-    if (!startsWith(buf_, 0, cfg_.header)) {
+    if (!startsWith(buf_, head_, cfg_.header)) {
         size_t discarded = resync();
         return discarded > 0; // 0 = 缓冲是帧头前缀，等更多数据
     }
-    if (buf_.size() < (size_t)lenFieldEnd)
+    if (avail < (size_t)lenFieldEnd)
         return false; // 帧头在但 length 字段未收全
-    uint64_t len = readUint(buf_.data() + cfg_.lenOffset, cfg_.lenBytesHeader,
+    uint64_t len = readUint(buf_.data() + head_ + cfg_.lenOffset, cfg_.lenBytesHeader,
                             cfg_.bigEndianHeader);
     uint64_t total = cfg_.lenIncludesAll
                          ? len
@@ -146,40 +162,43 @@ bool FrameSplitter::tryExtract(std::vector<std::vector<uint8_t>>& out) {
         resync();
         return true;
     }
-    if (buf_.size() < total)
+    if (avail < total)
         return false;
-    out.emplace_back(buf_.begin(), buf_.begin() + (int)total);
-    buf_.erase(buf_.begin(), buf_.begin() + (int)total);
+    out.emplace_back(buf_.begin() + (std::ptrdiff_t)head_,
+                     buf_.begin() + (std::ptrdiff_t)(head_ + total));
+    head_ += (size_t)total;
     return true;
 }
 
 // 多帧头重同步：向后找最近一个任意帧头的完整出现位置；
 // 找不到则保留可能构成某帧头前缀的最长尾部
 size_t FrameSplitter::resyncMulti() {
-    for (size_t i = 1; i < buf_.size(); ++i) {
+    for (size_t i = head_ + 1; i < buf_.size(); ++i) {
         for (const auto& cfg : cfgs_) {
             if (cfg.header.empty()) continue;
             if (startsWith(buf_, i, cfg.header)) {
-                buf_.erase(buf_.begin(), buf_.begin() + i);
-                return i;
+                size_t discarded = i - head_;
+                head_ = i;
+                return discarded;
             }
         }
     }
+    size_t avail = buf_.size() - head_;
     size_t maxKeep = 0;
     for (const auto& cfg : cfgs_) {
         if (cfg.header.empty()) continue;
-        size_t keep = std::min(buf_.size(), cfg.header.size() - 1);
+        size_t keep = std::min(avail, cfg.header.size() - 1);
         for (; keep >= 1 && keep > maxKeep; --keep) {
             if (std::equal(buf_.end() - keep, buf_.end(), cfg.header.begin()))
                 maxKeep = std::max(maxKeep, keep);
         }
     }
     if (maxKeep == 0) {
-        buf_.clear();
-        return 1;
+        head_ = buf_.size();
+        return avail == 0 ? 1 : avail; // 保证有进展（不会死循环）
     }
-    size_t discard = buf_.size() - maxKeep;
-    buf_.erase(buf_.begin(), buf_.end() - maxKeep);
+    size_t discard = avail - maxKeep;
+    head_ = buf_.size() - maxKeep;
     return discard == 0 ? 1 : discard; // 保证有进展（不会死循环）
 }
 
