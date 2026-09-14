@@ -41,7 +41,7 @@ scripts\build.cmd x64-debug pv_tests
 out\build\x64-debug\pv_tests.exe   :: 或 ctest --preset x64-debug
 ```
 
-**新增测试文件**：在 `tests/` 下建 `.cpp`，直接 `#include "PvTest.h"` 即可（**不要**定义 `PV_TEST_MAIN`，main 已在 `test_Smoke.cpp` 中），然后把文件加进 `tests/CMakeLists.txt`。
+**新增测试文件**：在 `tests/` 下建 `.cpp`，直接 `#include "PvTest.h"` 即可（**不要**定义 `PV_TEST_MAIN`，main 已在 `test_Smoke.cpp` 中），然后把文件加进 `tests/CMakeLists.txt`。性能测试（`test_Perf`）仅 Release 构建实际运行，Debug 下自动 `[skip]`。
 
 **提交/交付前必须**：全量构建通过 + `pv_tests` 全部通过。
 
