@@ -132,16 +132,15 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     int skipped = 0;
     auto ids = generateFieldComponents(p.pages[0], p, protoId, skipped);
     CHECK(skipped == 0);
-    REQUIRE(ids.size() == 10); // 5 显示组件 + 5 字段名文本
-    REQUIRE(p.pages[0].components.size() == 11);
+    REQUIRE(ids.size() == 5); // 仅显示组件（字段名由绑定卡片自显示）
+    REQUIRE(p.pages[0].components.size() == 6);
 
     // 类型映射：仅 bool→Lamp，其余（enum/string/f32/f64/整数）一律→Label；bindField 自动绑定
-    // ids 成对排列：偶数位 = 显示组件，紧随的奇数位 = 其左侧字段名文本
     const Component* c1 = p.pages[0].find(ids[0]);
-    const Component* c2 = p.pages[0].find(ids[2]);
-    const Component* c3 = p.pages[0].find(ids[4]);
-    const Component* c4 = p.pages[0].find(ids[6]);
-    const Component* c5 = p.pages[0].find(ids[8]);
+    const Component* c2 = p.pages[0].find(ids[1]);
+    const Component* c3 = p.pages[0].find(ids[2]);
+    const Component* c4 = p.pages[0].find(ids[3]);
+    const Component* c5 = p.pages[0].find(ids[4]);
     REQUIRE(c1 != nullptr);
     REQUIRE(c2 != nullptr);
     REQUIRE(c3 != nullptr);
@@ -159,20 +158,13 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     CHECK(c5->typeId == "Label"); // 整数同样生成文本（仪表不再用于一键生成）
     CHECK(props::asString(c5->propOr("bindField", std::string())) == "设备协议/设备1转速");
 
-    // 每个显示组件左侧附带字段名静态文本（text=字段名、无绑定、位置在组件左侧）
-    for (int k = 0; k < 5; ++k) {
-        const Component* disp = p.pages[0].find(ids[2 * k]);
-        const Component* nameLb = p.pages[0].find(ids[2 * k + 1]);
-        REQUIRE(disp != nullptr);
-        REQUIRE(nameLb != nullptr);
-        CHECK(nameLb->typeId == "Label");
-        CHECK(nameLb->name == disp->name + "·名");
-        CHECK(props::asString(nameLb->propOr("text", std::string())) == disp->name);
-        CHECK(props::asString(nameLb->propOr("bindField", std::string())).empty());
-        CHECK(nameLb->frame.x < disp->frame.x);          // 在组件左侧
-        CHECK(nameLb->frame.y == disp->frame.y);         // 同行
-        if (k > 0) // 纵向排列：行 y 严格递增
-            CHECK(disp->frame.y > p.pages[0].find(ids[2 * (k - 1)])->frame.y);
+    // 纵向排列：行 y 严格递增；不再生成独立的字段名文本
+    for (int k = 1; k < 5; ++k) {
+        const Component* prev = p.pages[0].find(ids[k - 1]);
+        const Component* cur = p.pages[0].find(ids[k]);
+        REQUIRE(prev != nullptr);
+        REQUIRE(cur != nullptr);
+        CHECK(cur->frame.y > prev->frame.y);
     }
 
     // 协议组件数据在多次 push_back 后仍完好（快照实现下读回一致）
@@ -187,5 +179,5 @@ TEST_CASE("一键生成字段组件：枚举/浮点/字符串三字段（回归�
     auto ids2 = generateFieldComponents(p.pages[0], p, protoId, skipped2);
     CHECK(ids2.empty());
     CHECK(skipped2 == 5);
-    CHECK(p.pages[0].components.size() == 11);
+    CHECK(p.pages[0].components.size() == 6);
 }

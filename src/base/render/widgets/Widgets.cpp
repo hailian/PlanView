@@ -96,14 +96,44 @@ void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     ImU32 color = props::asColor(c.propOr("color", (uint32_t)kDefaultTextFg));
     std::string align = props::asString(c.propOr("align", std::string("居中")));
 
+    std::string bindField = props::asString(c.propOr("bindField", std::string()));
+    if (bindField.empty()) { // 未绑定：纯文本渲染
+        float tw = textWidth(text.c_str(), fontSize);
+        float th = fontSize;
+        float x = r.Min.x;
+        if (align == "居中")
+            x = r.Min.x + (r.width() - tw) * 0.5f;
+        else if (align == "右")
+            x = r.Max.x - tw;
+        float y = r.Min.y + (r.height() - th) * 0.5f;
+        dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
+        return;
+    }
+
+    // 绑定协议字段：复合卡片（同数据源信息卡风格）——
+    // 左上角字段名（bindField = "协议名/字段名" 取字段名），中间数据值
+    std::string fieldName = bindField;
+    size_t slash = bindField.find('/');
+    if (slash != std::string::npos) fieldName = bindField.substr(slash + 1);
+    float radius = std::clamp(8.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(20, 26, 38, 255), radius);
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    // 左侧青色竖条（与数据源卡同语言，标识"协议字段驱动"）
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 3.5f * scale, r.Max.y - radius),
+                      kDefaultArc, 2.0f * scale);
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 10.0f * scale, r.Min.y + 5.0f * scale),
+                IM_COL32(140, 155, 180, 255), fieldName.c_str());
+    // 值：水平按对齐属性、垂直略下移避开字段名
     float tw = textWidth(text.c_str(), fontSize);
-    float th = fontSize;
     float x = r.Min.x;
     if (align == "居中")
         x = r.Min.x + (r.width() - tw) * 0.5f;
     else if (align == "右")
-        x = r.Max.x - tw;
-    float y = r.Min.y + (r.height() - th) * 0.5f;
+        x = r.Max.x - tw - 6.0f * scale;
+    else
+        x = r.Min.x + 10.0f * scale;
+    float y = r.Min.y + (r.height() - fontSize) * 0.5f + 7.0f * scale;
     dl->AddText(font(), fontSize, ImVec2(x, y), color, text.c_str());
 }
 
