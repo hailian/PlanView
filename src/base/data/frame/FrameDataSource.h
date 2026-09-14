@@ -13,6 +13,7 @@
 
 #include "base/data/IDataSource.h"
 #include "base/data/frame/FrameSourceSettings.h"
+#include "base/packet/PcapLink.h"
 #include "base/packet/SerialLink.h"
 #include "base/packet/TcpLink.h"
 #include "base/packet/UdpLink.h"
@@ -55,7 +56,9 @@ private:
     packet::UdpLink udp_;
     packet::TcpLink tcp_;
     packet::SerialLink serial_; // 串口字节流：与 TCP 共用拆帧路径
+    packet::PcapLink pcap_;     // 监听=镜像抓包：Npcap 混杂模式收第三方流量
     packet::FrameSplitter splitter_{cfg_.framing};
+    packet::FlowSplitters flows_{cfg_.framing}; // 镜像 TCP 逐流拆帧（UDP 直通）
     // 协议组多帧头（含单配置回退）；命中索引供字段归属过滤
     std::vector<packet::FramingConfig> framings_;
 

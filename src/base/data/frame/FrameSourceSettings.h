@@ -68,6 +68,11 @@ struct FrameSourceSettings {
     std::string listenIp = "*";      // dip（"*" 通配任意 IP）
     int listenPort = 9002;           // dport（UDP 反向匹配的源端口）
     bool listenTcp = false;          // 协议：false=UDP / true=TCP
+    // 监听方式=镜像抓包（listenPcap）：Npcap 混杂模式抓网卡，收交换机镜像/SPAN
+    // 出来的第三方流量。三元组命中 = 任一方向（正向=目的 dip:dport、反向=源
+    // dip:dport，收完整会话）；UDP 数据报天然成帧，TCP 逐流拆帧（尽力而为）
+    bool listenPcap = false;
+    std::string listenNic;           // 抓包网卡（Npcap 设备名 \Device\NPF\...）
 
     // 仅串口
     std::string serialPort = "COM1"; // 串口名（"COM3" 或数字 "3"）

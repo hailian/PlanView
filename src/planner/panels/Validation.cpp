@@ -101,6 +101,14 @@ void drawValidation(PlannerContext& ctx) {
             }
             // groupName 非空：组存在性由下方「数据源关联的协议组不存在」检查，
             // 组内成员由「协议组包含的协议不存在」检查，此处不重复报未关联
+
+            // 监听=镜像抓包须选择抓包网卡（Npcap 是否安装由运行器连接时报错提示）
+            if (props::asString(firstDs->propOr("transport", std::string("UDP"))) == "监听" &&
+                props::asString(firstDs->propOr("listenMode", std::string("本机端口"))) ==
+                    "镜像抓包" &&
+                props::asString(firstDs->propOr("listenNic", std::string())).empty())
+                issues.push_back({"镜像抓包未选择抓包网卡（运行器无法启动监听）",
+                                  firstDs->id, true});
         }
 
         // 数据源关联的协议组须存在；组内成员协议须存在

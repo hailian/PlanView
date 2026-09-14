@@ -101,17 +101,25 @@ FrameDataSource::~FrameDataSource() { disconnect(); }
 
 bool FrameDataSource::connect(std::string& err) {
     disconnect();
-    // 协议组多帧头：拆帧器按各帧头匹配；否则单配置
+    // 协议组多帧头：拆帧器按各帧头匹配；否则单配置（逐流拆帧器同配置）
     framings_ = cfg_.framings;
     if (framings_.empty()) framings_.push_back(cfg_.framing);
-    if (cfg_.framings.size() > 1)
+    if (cfg_.framings.size() > 1) {
         splitter_.setConfigs(cfg_.framings);
-    else
+        flows_.setConfigs(cfg_.framings);
+    } else {
         splitter_.setConfig(cfg_.framing);
+        flows_.setConfig(cfg_.framing);
+    }
     if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
         return serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
                             cfg_.stopBits, err);
     if (cfg_.listen) { // 监听：三元组 dip/dport/协议 过滤，绑定端口即 dport
+        if (cfg_.listenPcap) // 镜像抓包：BPF 过滤任一方向命中（未装 Npcap 时 err 带安装提示）
+            return pcap_.start(cfg_.listenNic,
+                               packet::buildListenBpf(cfg_.listenIp, cfg_.listenPort,
+                                                      cfg_.listenTcp),
+                               err);
         if (cfg_.listenTcp)
             return tcp_.listen(cfg_.listenPort, err, cfg_.listenIp);
         // UDP 反向命中 = 源==(dip,dport)；dip="*"（通配）不限源端口（正向全收）
@@ -134,13 +142,18 @@ void FrameDataSource::disconnect() {
     udp_.stop();
     tcp_.disconnect();
     serial_.close();
+    pcap_.stop();
+    flows_.reset();
     std::lock_guard<std::mutex> lock(mutex_);
     latestValue_.clear();
 }
 
 bool FrameDataSource::isConnected() const {
     if (cfg_.serial) return serial_.isOpen();
-    if (cfg_.listen) return cfg_.listenTcp ? tcp_.isConnected() : udp_.isRunning();
+    if (cfg_.listen) {
+        if (cfg_.listenPcap) return pcap_.isRunning();
+        return cfg_.listenTcp ? tcp_.isConnected() : udp_.isRunning();
+    }
     return cfg_.udp ? udp_.isRunning() : tcp_.isConnected();
 }
 
@@ -150,7 +163,15 @@ void FrameDataSource::pumpFrames() {
     // 监听与 UDP 是并列来源：监听协议=UDP 时同样走 UDP 收包。
     // 只看 cfg_.udp 会漏收监听帧（transport=监听 时 cfg_.udp 为 false）
     bool useUdp = cfg_.listen ? !cfg_.listenTcp : cfg_.udp;
-    if (useUdp) {
+    if (cfg_.listen && cfg_.listenPcap) {
+        // 镜像抓包：UDP 数据报天然成帧；TCP 逐流拆帧（SPAN 双向流不互相掺杂）
+        std::deque<packet::CapPacket> in;
+        pcap_.drain(in);
+        while (!in.empty()) {
+            flows_.feed(in.front(), frames);
+            in.pop_front();
+        }
+    } else if (useUdp) {
         std::deque<packet::UdpPacket> in;
         udp_.drain(in);
         while (!in.empty()) {

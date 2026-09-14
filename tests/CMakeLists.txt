@@ -6,6 +6,7 @@ add_executable(pv_tests
     test_RuntimeEngine.cpp
     test_PacketTools.cpp
     test_FrameSource.cpp
+    test_PcapListen.cpp
     test_Align.cpp
     test_AiProto.cpp
 )

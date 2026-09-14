@@ -563,8 +563,11 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                     IM_COL32(150, 150, 110, 255), "需手动启动");
     }
     char line[128];
-    if (transport == "监听") { // 三元组："监听 UDP 192.168.1.50:9002"
-        std::snprintf(line, sizeof(line), "监听 %s %s:%lld", listenProto.c_str(),
+    if (transport == "监听") { // 三元组："监听 UDP 192.168.1.50:9002" / "镜像抓包 UDP *:9002"
+        std::string listenMode =
+            props::asString(c.propOr("listenMode", std::string("本机端口")));
+        std::snprintf(line, sizeof(line), "%s %s %s:%lld",
+                      listenMode == "镜像抓包" ? "镜像抓包" : "监听", listenProto.c_str(),
                       listenIp.c_str(), (long long)listenPort);
     } else if (transport == "串口") { // 参数行："COM3 115200-8-N-1"
         std::snprintf(line, sizeof(line), "串口 %s %lld-%lld-%c-%lld", serialPort.c_str(),

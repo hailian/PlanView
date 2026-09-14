@@ -110,6 +110,10 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
         s.listenIp = props::asString(ds->propOr("listenIp", s.listenIp));
         s.listenPort = (int)props::asInt(ds->propOr("listenPort", int64_t(s.listenPort)));
         s.listenTcp = props::asString(ds->propOr("listenProto", std::string("UDP"))) == "TCP";
+        // 监听方式：本机端口（默认，普通 socket）或镜像抓包（Npcap 混杂模式）
+        s.listenPcap = props::asString(
+                           ds->propOr("listenMode", std::string("本机端口"))) == "镜像抓包";
+        s.listenNic = props::asString(ds->propOr("listenNic", s.listenNic));
     }
     s.serialPort = props::asString(ds->propOr("serialPort", s.serialPort));
     s.baud = (int)props::asInt(ds->propOr("baud", int64_t(s.baud)));

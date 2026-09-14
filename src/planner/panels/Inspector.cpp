@@ -4,6 +4,7 @@
 #include "base/llm/AiProto.h"
 #include "base/llm/LlmClient.h"
 #include "base/model/ComponentRegistry.h"
+#include "base/packet/NpcapApi.h"
 #include "base/packet/PacketSpec.h"
 #include "imgui.h"
 #include "imgui_stdlib.h"
@@ -536,6 +537,36 @@ void drawProtocolSelector(Component& c, PlannerContext& ctx) {
     }
 }
 
+// 监听=镜像抓包时的「抓包网卡」动态下拉：运行时经 Npcap 枚举本机网卡，
+// 显示友好描述、存储 NPF 设备名（跨重启稳定，作为工程持久化标识）。
+// 未安装 Npcap 时显示安装提示（保留已存值，便于换机后回来再选）
+void drawNicSelector(Component& c, PlannerContext& ctx) {
+    std::string cur = props::asString(c.propOr("listenNic", std::string()));
+    std::string err;
+    auto adapters = packet::npcap::listAdapters(err);
+    if (adapters.empty()) {
+        ImGui::TextColored(ImVec4(1, 0.7f, 0.45f, 1), "抓包网卡: %s", err.c_str());
+        return;
+    }
+    std::string preview = "(未选择)";
+    for (const auto& a : adapters)
+        if (a.first == cur) preview = a.second.empty() ? a.first : a.second;
+    if (preview == "(未选择)" && !cur.empty())
+        preview = cur + " (本机不存在)"; // 工程来自其他机器/USB 网卡已拔
+    if (ImGui::BeginCombo("抓包网卡", preview.c_str())) {
+        for (const auto& a : adapters) {
+            std::string label = a.second.empty() ? a.first : a.second;
+            bool sel = a.first == cur;
+            if (ImGui::Selectable(label.c_str(), sel) && !sel) {
+                ctx.doc.commit("选择抓包网卡");
+                c.setProp("listenNic", a.first);
+            }
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+}
+
 // 数据目的组件的「关联数据源」动态下拉：候选 = 工程内全部数据源组件名（跨页）
 void drawSourceSelector(Component& c, PlannerContext& ctx) {
     std::string cur = props::asString(c.propOr("source", std::string()));
@@ -786,6 +817,10 @@ void drawInspector(PlannerContext& ctx) {
         bool dsSerial = dsTransport == "串口";
         // 监听：固定三元组 dip/dport/协议，绑定端口即 dport——无独立本地监听端口
         bool dsListen = dsTransport == "监听";
+        // 监听方式=镜像抓包：Npcap 混杂模式（交换机 SPAN 场景），需选抓包网卡
+        bool dsListenPcap =
+            dsListen && props::asString(
+                            c->propOr("listenMode", std::string("本机端口"))) == "镜像抓包";
         bool dsUdpClient =
             !dsListen && !dsTcp && !dsSerial &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
@@ -816,6 +851,12 @@ void drawInspector(PlannerContext& ctx) {
                 bool listenItem = spec.key == "listenIp" || spec.key == "listenPort" ||
                                   spec.key == "listenProto";
                 if (listenItem && !dsListen) continue; // 仅监听（三元组）
+                if (spec.key == "listenMode" && !dsListen) continue;
+                if (spec.key == "listenNic") { // 动态下拉（运行时枚举 Npcap 设备）
+                    if (!dsListenPcap) continue;
+                    drawNicSelector(*c, ctx);
+                    continue;
+                }
                 // 监听下其余传输项已由上面的 dsListen/dsUseTarget/dsUseLocalPort 规则排除，
                 // autoStart/transport 照常显示
             }

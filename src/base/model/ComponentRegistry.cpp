@@ -155,9 +155,13 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specInt("remotePort", "远端端口", 9001, 1, 65535),
             specInt("localPort", "本地监听端口", 9001, 1, 65535),
             // 监听参数（仅传输=监听时显示）：固定三元组 dip/dport/协议
+            // 监听方式：本机端口=普通 socket（只收发往本机的流量）；
+            // 镜像抓包=Npcap 混杂模式（交换机 SPAN 镜像的第三方流量，需装 Npcap）
+            specEnum("listenMode", "监听方式", "本机端口", {"本机端口", "镜像抓包"}),
             specString("listenIp", "监听IP(dip)", "*"),
             specInt("listenPort", "监听端口(dport)", 9002, 1, 65535),
             specEnum("listenProto", "监听协议", "UDP", {"UDP", "TCP"}),
+            specString("listenNic", "抓包网卡", ""), // 动态下拉（运行时枚举 Npcap 设备）
             // 串口参数（仅传输=串口时显示）
             specString("serialPort", "串口", "COM1"),
             specInt("baud", "波特率", 9600, 300, 921600),
