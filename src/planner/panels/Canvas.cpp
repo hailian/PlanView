@@ -314,6 +314,7 @@ void drawCanvas(PlannerContext& ctx) {
     // ---- 组件渲染（z 升序，共享渲染器） ----
     RenderContext rc;
     rc.mode = RenderContext::Mode::Design;
+    rc.bindTitleFontSize = (float)ctx.project().settings.bindTitleFontSize; // 复合卡字段名字号
     rc.now = std::chrono::steady_clock::now();
     rc.textures = ctx.textures;
     for (const auto& c : page->components)

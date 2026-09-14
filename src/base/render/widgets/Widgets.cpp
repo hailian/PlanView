@@ -110,8 +110,8 @@ static ImVec2 clamp01(ImVec2 v) { return ImVec2(std::clamp(v.x, 0.0f, 1.0f), std
 // 绑定协议字段的复合卡片（数据源信息卡同风格）：深色圆角底 + 青色左竖条 + 左上角
 // 字段名。返回 false = 未绑定（不画任何东西，调用方走原渲染）；inner = 内容区
 // （顶部让出字段名高度）。
-bool drawBindCard(ImDrawList* dl, const ScreenRect& r, const Component& c, float scale,
-                  ScreenRect& inner) {
+bool drawBindCard(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                  const RenderContext& ctx, float scale, ScreenRect& inner) {
     std::string bf = props::asString(c.propOr("bindField", std::string()));
     if (bf.empty()) {
         inner = r;
@@ -120,8 +120,9 @@ bool drawBindCard(ImDrawList* dl, const ScreenRect& r, const Component& c, float
     std::string fieldName = bf; // bindField = "协议名/字段名" -> 取字段名
     size_t slash = bf.find('/');
     if (slash != std::string::npos) fieldName = bf.substr(slash + 1);
-    float titleSize = fitText(fieldName, 11.0f * scale, r.width() - 24.0f * scale,
-                              9.0f * scale); // 长字段名缩号/省略，不出卡片
+    float titleBase = std::max(8.0f, ctx.bindTitleFontSize) * scale; // 工程统一字号
+    float titleSize = fitText(fieldName, titleBase, r.width() - 24.0f * scale,
+                              std::min(titleBase, 8.0f * scale)); // 超宽缩号/省略，不出卡片
 
     // 指标卡：柔和圆角 + 底部渐层暗示 + 标题下细分隔线；左上角青点替代粗色条
     float radius = std::clamp(6.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
@@ -154,7 +155,7 @@ void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
     std::string align = props::asString(c.propOr("align", std::string("居中")));
 
     ScreenRect area = r;
-    if (!drawBindCard(dl, r, c, scale, area)) { // 未绑定：纯文本渲染
+    if (!drawBindCard(dl, r, c, ctx, scale, area)) { // 未绑定：纯文本渲染
         float tw = textWidth(text.c_str(), fontSize);
         float x = r.Min.x;
         if (align == "居中")
@@ -224,7 +225,7 @@ void drawLamp(ImDrawList* dl, const ScreenRect& r, const Component& c, const Ren
 
     // 绑定协议字段：复合卡片（左上角字段名），灯体缩进内容区
     ScreenRect area = r;
-    drawBindCard(dl, r, c, scale, area);
+    drawBindCard(dl, r, c, ctx, scale, area);
 
     ImVec2 center = area.center();
     float radius = std::min(area.width(), area.height()) * 0.5f - 2.0f * scale;
@@ -261,7 +262,7 @@ void drawGauge(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
 
     // 绑定协议字段：复合卡片（左上角字段名），表盘缩进内容区
     ScreenRect area = r;
-    drawBindCard(dl, r, c, scale, area);
+    drawBindCard(dl, r, c, ctx, scale, area);
 
     ImVec2 center = area.center();
     float radius = std::min(area.width(), area.height()) * 0.5f - 4.0f * scale;
@@ -324,7 +325,7 @@ void drawChart(ImDrawList* dl, const ScreenRect& r, const Component& c, const Re
 
     // 卡片底：绑定协议字段时走复合卡片（含字段名）；否则原卡片底
     ScreenRect area = r;
-    if (drawBindCard(dl, r, c, scale, area)) {
+    if (drawBindCard(dl, r, c, ctx, scale, area)) {
         // 卡片已画底与描边
     } else {
         float radius = 8.0f * scale;

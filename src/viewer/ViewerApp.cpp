@@ -262,6 +262,7 @@ void ViewerApp::drawPage(ImDrawList* dl, const Page& page) {
     RenderContext ctx;
     ctx.mode = RenderContext::Mode::Runtime;
     ctx.now = std::chrono::steady_clock::now();
+    ctx.bindTitleFontSize = (float)project_.settings.bindTitleFontSize; // 复合卡字段名字号
     ctx.properties = &engine_;
     ctx.chartSeries = &engine_;
     ctx.alarms = &engine_;

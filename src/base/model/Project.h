@@ -25,6 +25,8 @@ struct TcpSettings {
 struct ProjectSettings {
     TcpSettings tcp;             // SoftG 行文本协议数据源
     FrameSourceSettings frame;   // 帧数据源（TCP/UDP + 拆帧 + 规约解析）；enabled 时优先
+    // 复合卡片（绑定协议字段的显示组件）左上角协议字段名的统一字号
+    int bindTitleFontSize = 11;
 };
 
 struct Project {

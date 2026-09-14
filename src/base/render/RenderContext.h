@@ -77,6 +77,9 @@ struct RenderContext {
     std::string_view dsLastFrameTime;          // "HH:MM:SS"，空串 = 尚未收到
     const std::map<std::string, uint64_t>* protoFrameCounts = nullptr; // 协议名 -> 帧计数
 
+    // 复合卡片（绑定协议字段）左上角字段名的统一字号（工程设置；两 app 各自填充）
+    float bindTitleFontSize = 11.0f;
+
     // 0..1 方波闪烁相位（1Hz）
     float flashPhase() const {
         using namespace std::chrono;

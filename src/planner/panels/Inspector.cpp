@@ -713,6 +713,19 @@ void drawInspector(PlannerContext& ctx) {
             if (ImGui::IsItemActivated()) ctx.doc.commit("页面尺寸");
             page->size = ImVec2(std::max(100.0f, size[0]), std::max(100.0f, size[1]));
         }
+        // 复合卡片（绑定协议字段的显示组件）左上角字段名的统一字号，随工程保存
+        int fs = ctx.project().settings.bindTitleFontSize;
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::InputInt("字段名字号", &fs, 0, 0, ImGuiInputTextFlags_CharsDecimal)) {
+            int clamped = std::clamp(fs, 8, 32);
+            if (clamped != ctx.project().settings.bindTitleFontSize) {
+                ctx.doc.commit("字段名字号");
+                ctx.project().settings.bindTitleFontSize = clamped;
+            }
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("复合卡片（绑定协议字段的显示组件）左上角字段名的统一字号\n"
+                              "对全部复合组件生效，随工程保存");
         ImGui::End();
         return;
     }

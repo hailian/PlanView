@@ -1,5 +1,6 @@
 #include "base/serialize/ProjectJson.h"
 
+#include <algorithm>
 #include <fstream>
 
 #include "base/model/ComponentRegistry.h"
@@ -150,6 +151,7 @@ static Json projectToJson(const Project& p) {
         jf["fields"] = std::move(fields);
         settings["frame"] = std::move(jf);
     }
+    settings["bindTitleFontSize"] = p.settings.bindTitleFontSize; // 复合卡字段名字号
     j["settings"] = std::move(settings);
 
     Json pages = Json::array();
@@ -316,6 +318,9 @@ static bool jsonToProject(const Json& j, Project& p, std::string& err) {
             p.settings.tcp.port = t.value("port", p.settings.tcp.port);
             p.settings.tcp.pollMs = t.value("pollMs", p.settings.tcp.pollMs);
         }
+        if (s.contains("bindTitleFontSize"))
+            p.settings.bindTitleFontSize = std::clamp(
+                s["bindTitleFontSize"].get<int>(), 8, 32);
         if (s.contains("frame")) { // 帧数据源（可选；旧工程无此字段）
             const Json& f = s["frame"];
             FrameSourceSettings& fr = p.settings.frame;
