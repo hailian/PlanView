@@ -4,7 +4,9 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -13,6 +15,7 @@
 #include "base/data/IDataSource.h"
 #include "base/data/frame/FrameDataSource.h"
 #include "base/model/Project.h"
+#include "base/packet/SerialLink.h"
 
 namespace softg::viewer {
 
@@ -45,6 +48,18 @@ private:
     void run();
     void pushResultLocked(std::vector<TagReadResult>&& results);
 
+    // 数据目的转发链路：一条 sink = 一种传输的一条连接（懒连接、断线退避重试）
+    struct SinkLink {
+        FrameSinkSettings cfg;
+        std::unique_ptr<packet::TcpLink> tcp;
+        std::unique_ptr<packet::UdpLink> udp;
+        std::unique_ptr<packet::SerialLink> serial;
+        bool up = false;          // 链路已建立
+        std::chrono::steady_clock::time_point nextTry{}; // 断线后的下次重试时刻
+    };
+    void connectSink(SinkLink& sk, std::string& err);
+    void forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>& frames);
+
     std::thread thread_;
     std::atomic<bool> stopFlag_{false};
     std::atomic<bool> connected_{false};
@@ -59,6 +74,7 @@ private:
     ProjectSettings settings_;
     std::vector<Tag> tags_;  // worker 私有快照
     FrameDataSource* frameSource_ = nullptr;  // 由 run() 持有的源转换而来
+    std::vector<SinkLink> sinks_;             // 由 run() 创建（sourceName 匹配生效数据源）
 };
 
 } // namespace softg::viewer

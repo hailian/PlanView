@@ -99,6 +99,26 @@ void drawValidation(PlannerContext& ctx) {
                                   true});
             }
         }
+
+        // 数据目的：关联的数据源必须存在（按名称匹配）
+        for (const auto& pg : p.pages)
+            for (const auto& c : pg.components) {
+                if (c.typeId != "DataSink") continue;
+                std::string srcName = props::asString(c.propOr("source", std::string()));
+                if (srcName.empty()) {
+                    issues.push_back({"数据目的未关联数据源（不转发）", c.id, true});
+                    continue;
+                }
+                bool found = false;
+                for (const auto& pg2 : p.pages)
+                    for (const auto& c2 : pg2.components)
+                        if (c2.typeId == "DataSource" && c2.name == srcName) found = true;
+                if (!found)
+                    issues.push_back({"数据目的关联的数据源不存在: " + srcName, c.id, true});
+                else if (firstDs && srcName != firstDs->name)
+                    issues.push_back({"数据目的关联的不是首个（生效）数据源: " + srcName,
+                                      c.id, true});
+            }
     }
     // 协议配置：重名（关联按名称匹配会歧义）与未被引用提示
     if (!protocols.empty()) {

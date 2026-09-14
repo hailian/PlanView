@@ -349,9 +349,16 @@ void drawCanvas(PlannerContext& ctx) {
                 if (!pc) continue;
                 ImVec2 mid = drawProtoLink(dl, view, c, *pc, IM_COL32(96, 165, 250, 220));
                 showTip(mid, "数据源 " + c.name + " 使用协议: " + pc->name);
+                // 数据源 -> 关联的数据目的（紫）：原始帧转发
+                for (const auto& sk : page->components) {
+                    if (sk.typeId != "DataSink") continue;
+                    if (props::asString(sk.propOr("source", std::string())) != c.name) continue;
+                    ImVec2 m2 = drawProtoLink(dl, view, c, sk, IM_COL32(167, 139, 250, 220));
+                    showTip(m2, "数据源 " + c.name + " 转发原始帧 -> " + sk.name);
+                }
                 continue;
             }
-            if (c.typeId == "ProtocolConfig") continue;
+            if (c.typeId == "ProtocolConfig" || c.typeId == "DataSink") continue;
             // 显示组件绑定协议字段（青）：bindField = "协议名/字段名"（容忍历史带空格）
             std::string bf = props::asString(c.propOr("bindField", std::string()));
             if (bf.empty()) continue;

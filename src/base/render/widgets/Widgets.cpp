@@ -496,6 +496,55 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
                 line);
 }
 
+// ---- DataSink 数据目的（通信组件信息卡：关联数据源 + 转发端点）----
+void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
+                  const RenderContext& ctx, float scale) {
+    (void)ctx;
+    float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
+
+    dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
+    dl->AddRectFilled(r.Min, r.Max, IM_COL32(26, 22, 38, 255), radius); // 偏紫底区别于数据源
+    dl->AddRect(r.Min, r.Max, kDefaultPanelBorder, radius, 0, 1.2f * scale);
+    // 左侧紫色竖条（转发语义，与数据源青/协议蓝区分）
+    dl->AddRectFilled(ImVec2(r.Min.x, r.Min.y + radius), ImVec2(r.Min.x + 4.0f * scale, r.Max.y - radius),
+                      IM_COL32(167, 139, 250, 255), 2.0f * scale);
+
+    std::string transport = props::asString(c.propOr("transport", std::string("TCP")));
+    std::string udpRole = props::asString(c.propOr("udpRole", std::string("客户端")));
+    std::string tcpRole = props::asString(c.propOr("tcpRole", std::string("客户端")));
+    std::string host = props::asString(c.propOr("host", std::string("127.0.0.1")));
+    int64_t remotePort = props::asInt(c.propOr("remotePort", int64_t(9002)));
+    int64_t localPort = props::asInt(c.propOr("localPort", int64_t(9002)));
+    std::string serialPort = props::asString(c.propOr("serialPort", std::string("COM1")));
+    int64_t baud = props::asInt(c.propOr("baud", int64_t(9600)));
+    std::string source = props::asString(c.propOr("source", std::string()));
+
+    dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
+                kDefaultTextFg, "数据目的");
+    char line[128];
+    if (transport == "串口") {
+        std::snprintf(line, sizeof(line), "-> 串口 %s %lld", serialPort.c_str(),
+                      (long long)baud);
+    } else if (transport == "TCP") {
+        if (tcpRole == "服务端")
+            std::snprintf(line, sizeof(line), "-> TCP服务端 :%lld", (long long)localPort);
+        else
+            std::snprintf(line, sizeof(line), "-> TCP %s:%lld", host.c_str(),
+                          (long long)remotePort);
+    } else if (udpRole == "客户端") {
+        std::snprintf(line, sizeof(line), "-> UDP %s:%lld", host.c_str(),
+                      (long long)remotePort);
+    } else {
+        std::snprintf(line, sizeof(line), "-> UDP服务端 :%lld", (long long)localPort);
+    }
+    dl->AddText(font(), 13.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 30.0f * scale),
+                IM_COL32(170, 160, 200, 255), line);
+    std::snprintf(line, sizeof(line), "源: %s", source.empty() ? "(未关联)" : source.c_str());
+    dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
+                source.empty() ? IM_COL32(200, 120, 90, 255) : IM_COL32(167, 139, 250, 255),
+                line);
+}
+
 // ---- ProtocolConfig 协议配置（通信组件信息卡：拆帧方式 + 规约字段数）----
 void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
                         const RenderContext& ctx, float scale) {

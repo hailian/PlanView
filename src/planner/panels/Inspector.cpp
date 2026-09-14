@@ -462,6 +462,29 @@ void drawProtocolSelector(Component& c, PlannerContext& ctx) {
     }
 }
 
+// 数据目的组件的「关联数据源」动态下拉：候选 = 工程内全部数据源组件名（跨页）
+void drawSourceSelector(Component& c, PlannerContext& ctx) {
+    std::string cur = props::asString(c.propOr("source", std::string()));
+    const char* preview = cur.empty() ? "(未关联)" : cur.c_str();
+    if (ImGui::BeginCombo("关联数据源", preview)) {
+        if (ImGui::Selectable("(未关联)", cur.empty())) {
+            ctx.doc.commit("取消关联数据源");
+            c.setProp("source", std::string());
+        }
+        for (const auto& pg : ctx.project().pages)
+            for (const auto& pc : pg.components) {
+                if (pc.typeId != "DataSource") continue;
+                bool sel = pc.name == cur;
+                if (ImGui::Selectable(pc.name.c_str(), sel) && !sel) {
+                    ctx.doc.commit("关联数据源");
+                    c.setProp("source", pc.name);
+                }
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+        ImGui::EndCombo();
+    }
+}
+
 // 按 PropertySpec 生成单个类型化编辑器；返回是否有变更
 bool editProperty(const PropertySpec& spec, PropertyValue& value) {
     bool changed = false;
@@ -662,8 +685,11 @@ void drawInspector(PlannerContext& ctx) {
     ImGui::TextUnformatted("组件属性");
     if (info) {
         bool isDs = c->typeId == "DataSource";
+        bool isSink = c->typeId == "DataSink";
+        bool isComm = isDs || isSink; // 通信组件共用传输角色/端口/串口项过滤
         bool isProto = c->typeId == "ProtocolConfig";
-        std::string dsTransport = props::asString(c->propOr("transport", std::string("UDP")));
+        std::string dsTransport = props::asString(
+            c->propOr("transport", std::string(isSink ? "TCP" : "UDP")));
         bool dsTcp = dsTransport == "TCP";
         bool dsSerial = dsTransport == "串口";
         bool dsUdpClient =
@@ -677,8 +703,9 @@ void drawInspector(PlannerContext& ctx) {
         bool protoTlv =
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
-            if (isDs) {
-                if (spec.key == "protocol") continue; // 动态下拉（候选为协议组件名）
+            if (isComm) {
+                if (spec.key == "protocol" || spec.key == "source")
+                    continue; // 动态下拉（候选为协议/数据源组件名）
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
                 // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
@@ -707,9 +734,11 @@ void drawInspector(PlannerContext& ctx) {
         }
         if (isDs)
             drawProtocolSelector(*c, ctx); // 关联协议（动态候选）
+        if (isSink)
+            drawSourceSelector(*c, ctx); // 关联数据源（动态候选）
         if (isProto)
             drawProtocolFields(*c, ctx); // 规约字段列表（索引属性，自定义编辑）
-        if (!isDs && !isProto)
+        if (!isComm && !isProto)
             drawFieldBinding(*c, ctx); // 显示组件直接绑定协议字段
     } else {
         ImGui::TextColored(ImVec4(1, 0.6f, 0.6f, 1), "未注册类型: %s", c->typeId.c_str());

@@ -110,6 +110,33 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     s.parity = props::asString(ds->propOr("parity", s.parity));
     s.stopBits = (int)props::asInt(ds->propOr("stopBits", int64_t(s.stopBits)));
 
+    // 数据目的组件：把生效数据源收到的原始帧转发出去（按 source 属性关联数据源名）。
+    // 传输参数解析与数据源同构；仅 sourceName 匹配生效数据源的 sink 在运行器生效
+    s.sourceName = ds->name;
+    for (const auto& pg : p.pages)
+        for (const auto& c : pg.components) {
+            if (c.typeId != "DataSink") continue;
+            FrameSinkSettings k;
+            k.sourceName = props::asString(c.propOr("source", std::string()));
+            std::string tr = props::asString(
+                c.propOr("transport", std::string("TCP"))); // 与注册表默认一致
+            k.udp = tr == "UDP";
+            k.serial = tr == "串口";
+            k.udpClient = k.udp &&
+                          props::asString(c.propOr("udpRole", std::string("服务端"))) == "客户端";
+            k.tcpClient =
+                props::asString(c.propOr("tcpRole", std::string("客户端"))) != "服务端";
+            k.host = props::asString(c.propOr("host", k.host));
+            k.remotePort = (int)props::asInt(c.propOr("remotePort", int64_t(k.remotePort)));
+            k.localPort = (int)props::asInt(c.propOr("localPort", int64_t(k.localPort)));
+            k.serialPort = props::asString(c.propOr("serialPort", k.serialPort));
+            k.baud = (int)props::asInt(c.propOr("baud", int64_t(k.baud)));
+            k.dataBits = (int)props::asInt(c.propOr("dataBits", int64_t(k.dataBits)));
+            k.parity = props::asString(c.propOr("parity", k.parity));
+            k.stopBits = (int)props::asInt(c.propOr("stopBits", int64_t(k.stopBits)));
+            s.sinks.push_back(std::move(k));
+        }
+
     // 拆帧/字段来自关联的协议配置组件（按名称匹配；缺失时用默认 TLV 无字段）
     std::string protoName = props::asString(ds->propOr("protocol", std::string()));
     const Component* proto = nullptr;

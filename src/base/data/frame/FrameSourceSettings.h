@@ -30,6 +30,24 @@ struct TagField {
     std::vector<std::pair<int64_t, std::string>> enums; // Enum：值 → 名称
 };
 
+// 数据目的 → 数据源转发配置：把指定数据源收到的原始帧原样发往另一端点（网关/上传）。
+// 传输参数与 FrameSourceSettings 同构；sourceName 按名称关联数据源组件。
+struct FrameSinkSettings {
+    std::string sourceName;          // 关联的数据源组件名（空 = 未关联）
+    bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
+    bool serial = false;
+    bool udpClient = false;          // 仅 UDP：客户端=发往 connect 的远端；服务端=发往最近对端
+    bool tcpClient = true;           // 仅 TCP：客户端=连接远端；服务端=监听，向接入方转发
+    std::string host = "127.0.0.1";
+    int remotePort = 9002;
+    int localPort = 9002;
+    std::string serialPort = "COM1"; // 仅串口
+    int baud = 9600;
+    int dataBits = 8;
+    std::string parity = "无";
+    int stopBits = 1;
+};
+
 struct FrameSourceSettings {
     bool enabled = false;            // true=帧数据源；false=原 SoftG TCP 行协议
     bool autoStart = false;          // 仅帧数据源：true=PageViewer 打开即连接；false=顶栏手动启动
@@ -51,6 +69,8 @@ struct FrameSourceSettings {
     packet::FramingConfig framing;   // 仅 TCP 生效；UDP 天然成帧
 
     std::vector<TagField> fields;
+    std::string sourceName;                 // 生效数据源组件名（供数据目的按名称关联）
+    std::vector<FrameSinkSettings> sinks;   // 数据目的（转发生效数据源的原始帧）
 };
 
 // 协议配置组件（typeId == "ProtocolConfig"）属性 -> 拆帧参数 + 规约字段。

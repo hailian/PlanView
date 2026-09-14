@@ -181,6 +181,25 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         };
         t.push_back(std::move(i));
     }
+    { // 数据目的（通信组件：按名称关联数据源，运行器把该数据源收到的原始帧
+      // 原样转发到本端点——串口设备上传 SCADA 等网关场景）
+        ComponentTypeInfo i{"DataSink", "数据目的", "通信", {170, 84}, {}};
+        i.properties = {
+            specString("source", "关联数据源", ""), // 数据源组件名（Inspector 动态下拉）
+            specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口"}),
+            specEnum("udpRole", "UDP角色", "客户端", {"服务端", "客户端"}),
+            specEnum("tcpRole", "TCP角色", "客户端", {"客户端", "服务端"}),
+            specString("host", "主机/目标IP", "127.0.0.1"),
+            specInt("remotePort", "远端端口", 9002, 1, 65535),
+            specInt("localPort", "本地监听端口", 9002, 1, 65535),
+            specString("serialPort", "串口", "COM1"),
+            specInt("baud", "波特率", 9600, 300, 921600),
+            specInt("dataBits", "数据位", 8, 5, 8),
+            specEnum("parity", "校验", "无", {"无", "奇", "偶"}),
+            specInt("stopBits", "停止位", 1, 1, 2),
+        };
+        t.push_back(std::move(i));
+    }
     return t;
 }
 

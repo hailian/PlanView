@@ -67,6 +67,13 @@ void PollWorker::run() {
     if (settings_.frame.enabled) {
         ds = mgr.createFrame(settings_.frame);
         frameSource_ = static_cast<FrameDataSource*>(ds.get());
+        // 数据目的：仅关联生效数据源的 sink 生效（帧数据源才有原始帧可转发）
+        for (const auto& k : settings_.frame.sinks) {
+            if (k.sourceName != settings_.frame.sourceName) continue;
+            SinkLink sk;
+            sk.cfg = k;
+            sinks_.push_back(std::move(sk));
+        }
     } else {
         ds = mgr.createTcp(settings_.tcp);
         frameSource_ = nullptr;
@@ -96,6 +103,13 @@ void PollWorker::run() {
             if (ds->isConnected()) {
                 ds->disconnect();
                 connected_ = false;
+            }
+            for (auto& sk : sinks_) { // 数据目的同步断开（重启后随帧自动重连）
+                if (!sk.up) continue;
+                sk.up = false;
+                if (sk.cfg.serial) sk.serial->close();
+                else if (sk.cfg.udp) sk.udp->stop();
+                else sk.tcp->disconnect();
             }
             failAll("数据源未启动");
             for (int slept = 0; slept < 500 && !stopFlag_; slept += 20)
@@ -148,11 +162,12 @@ void PollWorker::run() {
             }
         }
 
-        // 1.5) 帧数据源：转发原始报文给 UI 监视
+        // 1.5) 帧数据源：转发原始帧给数据目的，再喂 UI 报文监视
         if (frameSource_) {
             std::deque<FrameDataSource::FrameLogEntry> frames;
             frameSource_->drainFrameLog(frames);
             if (!frames.empty()) {
+                forwardFrames(frames);
                 std::lock_guard<std::mutex> g(m_);
                 for (auto& f : frames) {
                     frameLog_.push_back(std::move(f));
@@ -182,6 +197,58 @@ void PollWorker::run() {
 
     ds->disconnect();
     frameSource_ = nullptr;
+    sinks_.clear();
+}
+
+// 建立 sink 链路（按传输建对应连接；UDP 客户端 connect、服务端 bind 后向最近对端发）
+void PollWorker::connectSink(SinkLink& sk, std::string& err) {
+    const FrameSinkSettings& k = sk.cfg;
+    if (k.serial) {
+        if (!sk.serial) sk.serial = std::make_unique<packet::SerialLink>();
+        sk.up = sk.serial->open(k.serialPort, k.baud, k.dataBits, k.parity, k.stopBits, err);
+    } else if (k.udp) {
+        if (!sk.udp) sk.udp = std::make_unique<packet::UdpLink>();
+        sk.up = k.udpClient ? sk.udp->startClient(k.host, k.remotePort, err)
+                            : sk.udp->start(k.localPort, err);
+    } else {
+        if (!sk.tcp) sk.tcp = std::make_unique<packet::TcpLink>();
+        sk.up = k.tcpClient ? sk.tcp->connect(k.host, k.remotePort, err)
+                            : sk.tcp->listen(k.localPort, err);
+    }
+}
+
+// 把数据源收到的原始帧原样转发到各 sink（尽力而为：断线丢帧、2s 退避重连）
+void PollWorker::forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>& frames) {
+    if (sinks_.empty()) return;
+    auto now = std::chrono::steady_clock::now();
+    for (auto& sk : sinks_) {
+        if (!sk.up && now < sk.nextTry) continue;
+        std::string err;
+        if (!sk.up) {
+            connectSink(sk, err);
+            if (!sk.up) {
+                sk.nextTry = now + std::chrono::seconds(2);
+                continue; // 本批帧丢弃（转发不缓存）
+            }
+        }
+        bool ok = true;
+        for (const auto& f : frames) {
+            if (sk.cfg.serial)
+                ok = sk.serial->send(f.data, err) && ok;
+            else if (sk.cfg.udp)
+                ok = sk.udp->send(f.data, err) && ok;
+            else
+                ok = sk.tcp->send(f.data, err) && ok;
+            if (!ok) break;
+        }
+        if (!ok) { // 断线：关链路，等下批帧再重连
+            sk.up = false;
+            sk.nextTry = now + std::chrono::seconds(2);
+            if (sk.cfg.serial) sk.serial->close();
+            else if (sk.cfg.udp) sk.udp->stop();
+            else sk.tcp->disconnect();
+        }
+    }
 }
 
 } // namespace softg::viewer

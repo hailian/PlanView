@@ -151,6 +151,56 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
     src.disconnect();
 }
 
+TEST_CASE("数据目的：工程级合成（source 按名称关联数据源）") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.name = "串口采集";
+    ds.setProp("autoStart", true);
+    ds.setProp("transport", std::string("串口"));
+    ds.setProp("serialPort", std::string("COM5"));
+    p.pages[0].components.push_back(ds);
+
+    Component sk = ComponentRegistry::createComponent("DataSink", "sink-1");
+    sk.name = "上传";
+    sk.setProp("source", std::string("串口采集"));
+    sk.setProp("transport", std::string("TCP"));
+    sk.setProp("tcpRole", std::string("客户端"));
+    sk.setProp("host", std::string("192.168.1.9"));
+    sk.setProp("remotePort", int64_t(7100));
+    p.pages[0].components.push_back(sk);
+
+    // 未关联源的 sink 也要进入列表（运行器按 sourceName 过滤，校验面板提示）
+    Component sk2 = ComponentRegistry::createComponent("DataSink", "sink-2");
+    p.pages[0].components.push_back(sk2);
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    CHECK(s.enabled);
+    CHECK(s.serial);                 // 数据源本体
+    CHECK(s.sourceName == "串口采集"); // 生效数据源名（供 sink 关联匹配）
+    REQUIRE(s.sinks.size() == 2);
+    CHECK(s.sinks[0].sourceName == "串口采集");
+    CHECK(!s.sinks[0].udp && !s.sinks[0].serial);           // TCP
+    CHECK(s.sinks[0].tcpClient);                             // 客户端角色
+    CHECK(s.sinks[0].host == "192.168.1.9");
+    CHECK(s.sinks[0].remotePort == 7100);
+    CHECK(s.sinks[1].sourceName.empty()); // 未关联
+
+    // 默认数据目的（未改属性）：TCP + 客户端角色（注册表默认传输 TCP）
+    Component fresh = ComponentRegistry::createComponent("DataSink", "sink-3");
+    fresh.setProp("source", std::string("串口采集"));
+    p.pages[0].components.clear();
+    p.pages[0].components.push_back(ds);
+    p.pages[0].components.push_back(fresh);
+    FrameSourceSettings d = frameSettingsFromProject(p);
+    REQUIRE(d.sinks.size() == 1);
+    CHECK(!d.sinks[0].udp && !d.sinks[0].serial); // TCP
+    CHECK(d.sinks[0].tcpClient);
+}
+
 TEST_CASE("帧数据源：数据源+协议组件 -> 工程级合成") {
     Project p;
     Page pg;
