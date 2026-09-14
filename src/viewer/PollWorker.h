@@ -44,6 +44,10 @@ public:
     void drainFrames(std::deque<FrameDataSource::FrameLogEntry>& out);
     bool isFrameSource() const { return frameSource_ != nullptr; }
 
+    // 通信统计（UI 每帧拉取，画布卡片显示；帧数据源专用）
+    std::string lastFrameTimeText();     // 最后一帧接收时间（空 = 未收到）
+    uint64_t matchedFrameCount();        // 符合协议的帧计数
+
 private:
     void run();
     void pushResultLocked(std::vector<TagReadResult>&& results);
@@ -75,6 +79,9 @@ private:
     std::vector<Tag> tags_;  // worker 私有快照
     FrameDataSource* frameSource_ = nullptr;  // 由 run() 持有的源转换而来
     std::vector<SinkLink> sinks_;             // 由 run() 创建（sourceName 匹配生效数据源）
+    std::atomic<uint64_t> matchedFrames_{0};  // 统计快照（run 循环刷新）
+    std::mutex statM_;
+    std::string lastFrameTime_;
 };
 
 } // namespace softg::viewer

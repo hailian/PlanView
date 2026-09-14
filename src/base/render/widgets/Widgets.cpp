@@ -494,6 +494,14 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
                 protocol.empty() ? IM_COL32(200, 120, 90, 255) : IM_COL32(120, 150, 190, 255),
                 line);
+    // 运行态：最后一帧接收时间（设计器不显示）
+    if (ctx.commStatsValid) {
+        snprintf(line, sizeof(line), "最后帧: %s",
+                 ctx.dsLastFrameTime.empty() ? "-" : ctx.dsLastFrameTime.data());
+        dl->AddText(font(), 11.0f * scale,
+                    ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 68.0f * scale),
+                    IM_COL32(150, 165, 185, 255), line);
+    }
 }
 
 // ---- DataSink 数据目的（通信组件信息卡：关联数据源 + 转发端点）----
@@ -548,7 +556,6 @@ void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
 // ---- ProtocolConfig 协议配置（通信组件信息卡：拆帧方式 + 规约字段数）----
 void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
                         const RenderContext& ctx, float scale) {
-    (void)ctx;
     float radius = std::clamp(10.0f * scale, 0.0f, std::min(r.width(), r.height()) * 0.5f);
 
     dropShadow(dl, r, radius, scale, IM_COL32(0, 0, 0, 70));
@@ -577,6 +584,14 @@ void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::snprintf(line, sizeof(line), "%lld 字段", (long long)fieldCount);
     dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
                 IM_COL32(120, 132, 152, 255), line);
+    // 运行态：符合协议的帧计数（成帧且命中至少一字段；设计器不显示）
+    if (ctx.commStatsValid) {
+        std::snprintf(line, sizeof(line), "帧计数: %llu",
+                      (unsigned long long)ctx.protoMatchedFrames);
+        dl->AddText(font(), 11.0f * scale,
+                    ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 68.0f * scale),
+                    IM_COL32(150, 165, 185, 255), line);
+    }
 }
 
 // ---- 未知类型占位 ----

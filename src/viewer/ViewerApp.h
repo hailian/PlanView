@@ -46,6 +46,8 @@ private:
     // 页面视图变换（缩放/平移）；viewZoom_ <= 0 表示未初始化，首帧按系统 DPI 设置
     ImVec2 viewOffset_ = ImVec2(40, 40);
     float viewZoom_ = 0.0f;
+    std::string dsLastFrameTimeCache_; // RenderContext.string_view 的宿主（每帧刷新）
+
     ImVec2 toScreen(ImVec2 page) const {
         return ImVec2(page.x * viewZoom_ + viewOffset_.x, page.y * viewZoom_ + viewOffset_.y);
     }

@@ -165,17 +165,22 @@ void FrameDataSource::pumpFrames() {
         const uint8_t* payload = nullptr;
         int payloadLen = 0;
         bool structured = packet::decodeFrameOnce(cfg_.framing, frame, tagId, payload, payloadLen);
+        bool matched = false; // 符合协议：成帧且至少一个字段可解出
         if (structured) {
             for (const auto& f : cfg_.fields) {
                 if (cfg_.framing.mode == packet::FrameMode::Tlv && f.tagId != tagId)
                     continue; // TLV：字段按槽位标识匹配帧
                 TagValue val;
-                if (fieldValue(f, payload, payloadLen, val))
+                if (fieldValue(f, payload, payloadLen, val)) {
                     latestValue_[f.address] = std::move(val); // 同槽位多字段：后到者覆盖
+                    matched = true;
+                }
             }
         }
+        lastFrameTime_ = nowTimeText(); // 统计与日志共用同一接收时刻
+        if (matched) ++matchedFrames_;
         FrameLogEntry e;
-        e.timeText = nowTimeText();
+        e.timeText = lastFrameTime_;
         e.data = std::move(frame);
         frameLog_.push_back(std::move(e));
     }
@@ -236,6 +241,16 @@ void FrameDataSource::drainFrameLog(std::deque<FrameLogEntry>& out) {
         out.push_back(std::move(frameLog_.front()));
         frameLog_.pop_front();
     }
+}
+
+std::string FrameDataSource::lastFrameTimeText() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return lastFrameTime_;
+}
+
+uint64_t FrameDataSource::matchedFrameCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return matchedFrames_;
 }
 
 } // namespace softg

@@ -97,6 +97,10 @@ TEST_CASE("帧数据源：UDP 回环 → 解析 → 标签值") {
     CHECK(log.size() == 2);
     CHECK(packet::bytesToHex(log.front().data) == "01 00 02 01 F4");
 
+    // 运行统计：末帧时间非空；两帧均命中字段 -> 计数 2
+    CHECK(!src.lastFrameTimeText().empty());
+    CHECK(src.matchedFrameCount() == 2);
+
     // 再发一帧：缓存刷新为最新值
     CHECK(sender.send(hex("01 00 02 00 C8"), err)); // 200 * 0.1 = 20
     std::this_thread::sleep_for(std::chrono::milliseconds(300));

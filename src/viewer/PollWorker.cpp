@@ -43,6 +43,13 @@ std::string PollWorker::lastError() {
     return lastError_;
 }
 
+std::string PollWorker::lastFrameTimeText() {
+    std::lock_guard<std::mutex> g(statM_);
+    return lastFrameTime_;
+}
+
+uint64_t PollWorker::matchedFrameCount() { return matchedFrames_.load(); }
+
 void PollWorker::drainFrames(std::deque<FrameDataSource::FrameLogEntry>& out) {
     std::lock_guard<std::mutex> g(m_);
     while (!frameLog_.empty()) {
@@ -162,8 +169,14 @@ void PollWorker::run() {
             }
         }
 
-        // 1.5) 帧数据源：转发原始帧给数据目的，再喂 UI 报文监视
+        // 1.5) 帧数据源：转发原始帧给数据目的，再喂 UI 报文监视；顺带刷新统计快照
         if (frameSource_) {
+            {
+                std::string t = frameSource_->lastFrameTimeText();
+                std::lock_guard<std::mutex> g(statM_);
+                lastFrameTime_ = std::move(t);
+            }
+            matchedFrames_.store(frameSource_->matchedFrameCount());
             std::deque<FrameDataSource::FrameLogEntry> frames;
             frameSource_->drainFrameLog(frames);
             if (!frames.empty()) {

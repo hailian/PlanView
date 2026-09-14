@@ -266,6 +266,12 @@ void ViewerApp::drawPage(ImDrawList* dl, const Page& page) {
     ctx.chartSeries = &engine_;
     ctx.alarms = &engine_;
     ctx.textures = &textures_;
+    if (worker_.isFrameSource()) { // 通信统计：末帧时间 / 符合协议帧计数
+        ctx.commStatsValid = true;
+        dsLastFrameTimeCache_ = worker_.lastFrameTimeText();
+        ctx.dsLastFrameTime = dsLastFrameTimeCache_;
+        ctx.protoMatchedFrames = worker_.matchedFrameCount();
+    }
     for (const auto& c : page.components)
         ComponentRenderer::drawComponent(dl, c, ctx, viewOffset_, viewZoom_);
 

@@ -42,6 +42,10 @@ public:
     // 报文监视：取走最近的原始帧（worker 线程调用后转发给 UI）
     void drainFrameLog(std::deque<FrameLogEntry>& out);
 
+    // 运行统计（画布卡片显示；线程安全）
+    std::string lastFrameTimeText() const; // 最后一帧接收时间 HH:MM:SS（空 = 未收到）
+    uint64_t matchedFrameCount() const;    // 符合协议的帧计数（成帧且命中至少一字段）
+
 private:
     void pumpFrames();  // 收包队列 → 拆帧 → 规约解析 → 缓存 + 日志（worker 线程调用）
 
@@ -51,9 +55,11 @@ private:
     packet::SerialLink serial_; // 串口字节流：与 TCP 共用拆帧路径
     packet::FrameSplitter splitter_{cfg_.framing};
 
-    std::mutex mutex_;
+    mutable std::mutex mutex_; // 统计 getter 为 const 读
     std::map<int, TagValue> latestValue_;     // 标签槽位 → 最新解析值（数值/布尔/文本）
     std::deque<FrameLogEntry> frameLog_;
+    std::string lastFrameTime_;               // 最后一帧接收时间（HH:MM:SS）
+    uint64_t matchedFrames_ = 0;              // 符合协议的帧计数（成帧且命中至少一字段）
 };
 
 } // namespace softg
