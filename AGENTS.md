@@ -89,5 +89,5 @@ examples/          demo_project.json 演示工程
 
 ## Git 约定
 
-- 提交信息：中文一句话概述（沿用现有历史风格，如「重构项目为模块化多目标架构」）。
+- 提交信息：**一律英文、简单简约**（conventional 一行主题，如 `perf: ...` / `docs: ...`，正文仅在必要时）。CHANGELOG.md 倒序排列（最新版本在最前），按 git tag 记版本。
 - 不要提交构建产物与运行时文件（`.gitignore` 已覆盖 `out/`、`*.obj`、`*.pdb`、`*.ini`、`PageViewer.recent` 等）；根目录若出现 `fcheck.obj`、`vc140.pdb` 之类编译遗留物属正常，忽略即可。
