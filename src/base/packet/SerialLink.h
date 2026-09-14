@@ -13,7 +13,7 @@
 
 #include "base/packet/TcpLink.h" // TcpChunk
 
-namespace softg::packet {
+namespace pv::packet {
 
 class SerialLink {
 public:
@@ -49,4 +49,4 @@ private:
     std::string lastError_;
 };
 
-} // namespace softg::packet
+} // namespace pv::packet

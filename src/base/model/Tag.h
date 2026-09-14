@@ -11,10 +11,10 @@
 
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 // 类型名（协议与 JSON 共用）：bool/int16/uint16/int32/uint32/float32/string
-// string 仅用于帧数据源（枚举名/文本字段）；SoftG 行协议不支持字符串标签。
+// string 仅用于帧数据源（枚举名/文本字段）；PlanView 行协议不支持字符串标签。
 enum class TagDataType : uint8_t { Bool, Int16, UInt16, Int32, UInt32, Float32, String };
 const char* tagDataTypeName(TagDataType t);
 std::optional<TagDataType> tagDataTypeFromName(std::string_view name);
@@ -42,4 +42,4 @@ struct Tag {
     double numeric() const;
 };
 
-} // namespace softg
+} // namespace pv

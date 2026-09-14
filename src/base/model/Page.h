@@ -6,7 +6,7 @@
 #include "base/model/Component.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 struct Page {
     PageId id;
@@ -31,4 +31,4 @@ struct Page {
     }
 };
 
-} // namespace softg
+} // namespace pv

@@ -8,7 +8,7 @@
 #include "base/data/frame/FrameSourceSettings.h" // TagField
 #include "base/packet/FrameCodec.h"              // FramingConfig
 
-namespace softg {
+namespace pv {
 
 // 生成 count 组随机帧：
 //   TLV 模式：每个字段独立成帧（T|L|V，V 内按字段 offset 前置 0 填充）；
@@ -24,4 +24,4 @@ std::vector<std::vector<uint8_t>> generateTestFrames(
     const std::vector<packet::FramingConfig>& framings, const std::vector<TagField>& fields,
     int count, uint32_t seed = 0);
 
-} // namespace softg
+} // namespace pv

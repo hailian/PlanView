@@ -9,7 +9,7 @@
 
 #include "base/model/Component.h"
 
-namespace softg::llm {
+namespace pv::llm {
 
 // 提示词（约束 LLM 只输出规定 schema 的 JSON；字段类型覆盖数值/布尔/定长字符串/枚举）
 std::string aiProtoSystemPrompt();
@@ -49,4 +49,4 @@ bool parseAiProtoResponse(const std::string& raw, AiProtoResult& out, std::strin
 // 应用到协议配置组件（写拆帧属性 + fieldCount + f<i>.*；槽位由字段序号自动分配）
 void applyAiProto(Component& c, const AiProtoResult& r);
 
-} // namespace softg::llm
+} // namespace pv::llm

@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace softg::packet {
+namespace pv::packet {
 
 // 一段收到的原始字节（可能不构成完整帧）
 struct TcpChunk {
@@ -58,4 +58,4 @@ private:
     std::string lastError_;
 };
 
-} // namespace softg::packet
+} // namespace pv::packet

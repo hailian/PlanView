@@ -3,7 +3,7 @@
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 void drawPages(PlannerContext& ctx) {
     if (!ImGui::Begin("页面")) {
@@ -67,4 +67,4 @@ void drawPages(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

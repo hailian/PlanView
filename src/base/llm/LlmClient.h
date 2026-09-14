@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace softg::llm {
+namespace pv::llm {
 
 struct LlmConfig {
     std::string baseUrl = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
@@ -22,4 +22,4 @@ bool saveConfig(const LlmConfig& cfg);
 bool chatCompletion(const LlmConfig& cfg, const std::string& system,
                     const std::string& user, std::string& out, std::string& err);
 
-} // namespace softg::llm
+} // namespace pv::llm

@@ -9,7 +9,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-namespace softg::packet {
+namespace pv::packet {
 
 bool TcpLink::connect(const std::string& host, int port, std::string& err) {
     disconnect();
@@ -72,7 +72,7 @@ bool TcpLink::connect(const std::string& host, int port, std::string& err) {
         lastError_.clear();
     }
     thread_ = std::thread([this] { recvLoop(); });
-    SOFTG_LOG_INFO("TCP 连接成功: %s:%d", host.c_str(), port);
+    PV_LOG_INFO("TCP 连接成功: %s:%d", host.c_str(), port);
     return true;
 }
 
@@ -117,7 +117,7 @@ bool TcpLink::listen(int port, std::string& err, const std::string& filterIp) {
         lastError_.clear();
     }
     thread_ = std::thread([this] { acceptLoop(); });
-    SOFTG_LOG_INFO("TCP 监听启动: 端口 %d", port);
+    PV_LOG_INFO("TCP 监听启动: 端口 %d", port);
     return true;
 }
 
@@ -204,7 +204,7 @@ void TcpLink::acceptLoop() {
         char peerIp[64];
         ::inet_ntop(AF_INET, &peer.sin_addr, peerIp, sizeof(peerIp));
         if (filterIp_ != "*" && filterIp_ != peerIp) { // 三元组对端过滤：未命中拒接
-            SOFTG_LOG_INFO("TCP 接入被过滤拒绝: %s", peerIp);
+            PV_LOG_INFO("TCP 接入被过滤拒绝: %s", peerIp);
             ::closesocket(c);
             continue;
         }
@@ -212,7 +212,7 @@ void TcpLink::acceptLoop() {
         ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tvr, sizeof(tvr));
         sock_ = (uintptr_t)c;
         connected_ = true;
-        SOFTG_LOG_INFO("TCP 客户端已接入");
+        PV_LOG_INFO("TCP 客户端已接入");
         recvLoop(); // 阻塞收字节，直到对端断开或出错
         ::closesocket(c);
         sock_ = (uintptr_t)-1;
@@ -220,9 +220,9 @@ void TcpLink::acceptLoop() {
             std::lock_guard<std::mutex> lock(mutex_);
             lastError_ = "对端已断开，等待重新接入";
         }
-        SOFTG_LOG_INFO("TCP 客户端断开，回到监听");
+        PV_LOG_INFO("TCP 客户端断开，回到监听");
     }
     connected_ = false;
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

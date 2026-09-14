@@ -11,7 +11,7 @@
 #include "base/render/TextureCache.h"
 #include "planner/Document.h"
 
-namespace softg::planner {
+namespace pv::planner {
 
 // 画布视图状态（屏幕 = 页面 * zoom + offset）
 struct CanvasView {
@@ -78,4 +78,4 @@ struct PlannerContext {
     void duplicateSelection();  // = copy + paste
 };
 
-} // namespace softg::planner
+} // namespace pv::planner

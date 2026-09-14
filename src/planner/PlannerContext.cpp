@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace softg::planner {
+namespace pv::planner {
 
 namespace {
 
@@ -198,4 +198,4 @@ void PlannerContext::duplicateSelection() {
     pasteClipboard();
 }
 
-} // namespace softg::planner
+} // namespace pv::planner

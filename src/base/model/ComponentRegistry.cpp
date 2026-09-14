@@ -1,6 +1,6 @@
 #include "base/model/ComponentRegistry.h"
 
-namespace softg {
+namespace pv {
 
 // ---- 内置组件类型的属性规格 ----
 namespace {
@@ -258,4 +258,4 @@ Component ComponentRegistry::createComponent(std::string_view typeId, const Comp
     return c;
 }
 
-} // namespace softg
+} // namespace pv

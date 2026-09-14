@@ -8,7 +8,7 @@
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 void drawPalette(PlannerContext& ctx) {
     (void)ctx;
@@ -61,4 +61,4 @@ void drawPalette(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

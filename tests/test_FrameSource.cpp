@@ -1,5 +1,5 @@
 // M8 单测：帧数据源组件 — UDP 回环收帧 → 规约解析 → 标签值刷新
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include <chrono>
 #include <thread>
@@ -11,7 +11,7 @@
 #include "base/packet/SerialLink.h"
 #include "base/packet/UdpLink.h"
 
-using namespace softg;
+using namespace pv;
 
 static std::vector<uint8_t> hex(const char* s) {
     std::vector<uint8_t> v;

@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 
-namespace softg::log {
+namespace pv::log {
 
 static const char* levelTag(Level level) {
     switch (level) {
@@ -39,7 +39,7 @@ static void writeToConsoleOrStdout(const char* text) {
 
 void write(Level level, const char* fmt, ...) {
     char buf[1024];
-    int prefix = std::snprintf(buf, sizeof(buf), "[SoftG %s] ", levelTag(level));
+    int prefix = std::snprintf(buf, sizeof(buf), "[PlanView %s] ", levelTag(level));
 
     va_list args;
     va_start(args, fmt);
@@ -59,4 +59,4 @@ void write(Level level, const char* fmt, ...) {
     ::OutputDebugStringW(wide.c_str());
 }
 
-} // namespace softg::log
+} // namespace pv::log

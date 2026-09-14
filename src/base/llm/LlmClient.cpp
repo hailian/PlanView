@@ -9,7 +9,7 @@
 
 #pragma comment(lib, "winhttp.lib")
 
-namespace softg::llm {
+namespace pv::llm {
 
 namespace {
 
@@ -110,7 +110,7 @@ bool chatCompletion(const LlmConfig& cfg, const std::string& system,
     int port = 0;
     if (!splitUrl(cfg.baseUrl, secure, host, port, path, err)) return false;
 
-    HINTERNET session = WinHttpOpen(L"SoftG/0.1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+    HINTERNET session = WinHttpOpen(L"PlanView/0.1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) {
         err = "WinHttpOpen 失败";
@@ -174,4 +174,4 @@ bool chatCompletion(const LlmConfig& cfg, const std::string& system,
     return ok;
 }
 
-} // namespace softg::llm
+} // namespace pv::llm

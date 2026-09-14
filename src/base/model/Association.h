@@ -9,7 +9,7 @@
 #include "base/model/Property.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 // (a) 数据绑定：组件属性 <-> 数据标签
 struct DataBinding {
@@ -58,4 +58,4 @@ inline const AssocId& assocId(const Association& a) {
     return std::visit([](const auto& x) -> const AssocId& { return x.id; }, a);
 }
 
-} // namespace softg
+} // namespace pv

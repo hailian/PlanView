@@ -1,6 +1,6 @@
 #include "base/model/TagDatabase.h"
 
-namespace softg {
+namespace pv {
 
 bool TagDatabase::add(Tag t, std::string& err) {
     if (t.name.empty()) {
@@ -32,4 +32,4 @@ bool TagDatabase::remove(const TagName& name) {
     return false;
 }
 
-} // namespace softg
+} // namespace pv

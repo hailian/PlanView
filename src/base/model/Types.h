@@ -6,7 +6,7 @@
 
 #include "imgui.h"
 
-namespace softg {
+namespace pv {
 
 // ---- Id：工程内由 Project::nextId 单调分配，形如 "comp-12" / "page-1" / "a-5" ----
 using ComponentId = std::string;
@@ -44,4 +44,4 @@ inline bool compare(Comparator c, double actual, double threshold) {
 enum class AlarmSeverity : uint8_t { Low = 0, High = 1, Critical = 2 };
 enum class AlarmStyle : uint8_t { Flash = 0, Border, Color };
 
-} // namespace softg
+} // namespace pv

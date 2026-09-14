@@ -5,7 +5,7 @@ add_executable(PageViewer
     ViewerApp.cpp
     PollWorker.cpp
 )
-target_link_libraries(PageViewer PRIVATE softg_base)
+target_link_libraries(PageViewer PRIVATE pv_base)
 if(MSVC)
     target_compile_options(PageViewer PRIVATE /W3)
 endif()

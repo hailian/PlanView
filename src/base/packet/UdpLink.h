@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace softg::packet {
+namespace pv::packet {
 
 struct UdpPacket {
     std::string from;      // 对端 "ip:port"
@@ -58,4 +58,4 @@ private:
     int filterPort_ = 0;         // 监听过滤：源端口（0 不限）
 };
 
-} // namespace softg::packet
+} // namespace pv::packet

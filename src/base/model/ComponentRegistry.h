@@ -5,7 +5,7 @@
 
 #include "base/model/Component.h"
 
-namespace softg {
+namespace pv {
 
 class ComponentRegistry {
 public:
@@ -23,4 +23,4 @@ private:
     std::vector<ComponentTypeInfo> types_;
 };
 
-} // namespace softg
+} // namespace pv

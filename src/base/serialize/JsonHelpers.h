@@ -8,7 +8,7 @@
 #include "base/model/Association.h"
 #include "base/model/Property.h"
 
-namespace softg::jsonx {
+namespace pv::jsonx {
 
 using Json = nlohmann::json;
 
@@ -34,4 +34,4 @@ LinkageEvent linkageEventFromString(const std::string& s, LinkageEvent fallback)
 std::string linkageActionToString(LinkageAction a);
 LinkageAction linkageActionFromString(const std::string& s, LinkageAction fallback);
 
-} // namespace softg::jsonx
+} // namespace pv::jsonx

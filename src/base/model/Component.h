@@ -7,7 +7,7 @@
 #include "base/model/Property.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 // 组件类型描述：注册表驱动，两款 exe 注册同一套内置类型。
 struct ComponentTypeInfo {
@@ -42,4 +42,4 @@ struct Component {
     }
 };
 
-} // namespace softg
+} // namespace pv

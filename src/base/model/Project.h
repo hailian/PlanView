@@ -13,9 +13,9 @@
 #include "base/model/TagDatabase.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
-// TCP 数据服务器连接设置（自定义行文本协议，见 base/data/tcp/SoftgProtocol.h）
+// TCP 数据服务器连接设置（自定义行文本协议，见 base/data/tcp/PvProtocol.h）
 struct TcpSettings {
     std::string host = "127.0.0.1";
     int port = 9000;
@@ -23,7 +23,7 @@ struct TcpSettings {
 };
 
 struct ProjectSettings {
-    TcpSettings tcp;             // SoftG 行文本协议数据源
+    TcpSettings tcp;             // PlanView 行文本协议数据源
     FrameSourceSettings frame;   // 帧数据源（TCP/UDP + 拆帧 + 规约解析）；enabled 时优先
     // 复合卡片（绑定协议字段的显示组件）左上角协议字段名的统一字号
     int bindTitleFontSize = 11;
@@ -99,4 +99,4 @@ struct Project {
     }
 };
 
-} // namespace softg
+} // namespace pv

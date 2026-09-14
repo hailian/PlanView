@@ -3,7 +3,7 @@
 #include <cctype>
 #include <cstdio>
 
-namespace softg::packet {
+namespace pv::packet {
 
 std::string bytesToHex(const std::vector<uint8_t>& bytes) {
     static const char* kHex = "0123456789ABCDEF";
@@ -51,4 +51,4 @@ bool hexToBytes(const std::string& text, std::vector<uint8_t>& out, std::string&
     return true;
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

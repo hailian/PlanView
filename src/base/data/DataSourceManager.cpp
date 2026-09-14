@@ -6,13 +6,13 @@
 
 #include <winsock2.h>
 
-namespace softg {
+namespace pv {
 
 DataSourceManager::DataSourceManager() {
     WSADATA wsa;
     wsaOk_ = WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
     if (!wsaOk_)
-        SOFTG_LOG_ERROR("WSAStartup 失败");
+        PV_LOG_ERROR("WSAStartup 失败");
 }
 
 DataSourceManager::~DataSourceManager() {
@@ -27,4 +27,4 @@ std::unique_ptr<IDataSource> DataSourceManager::createFrame(const FrameSourceSet
     return std::make_unique<FrameDataSource>(settings);
 }
 
-} // namespace softg
+} // namespace pv

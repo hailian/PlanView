@@ -7,7 +7,7 @@
 
 #pragma comment(lib, "ole32.lib")
 
-namespace softg::dialog {
+namespace pv::dialog {
 
 namespace {
 
@@ -96,4 +96,4 @@ bool saveFile(const std::string& title, const std::vector<Filter>& filters,
     return runDialog(title, filters, defaultName, true, outPath);
 }
 
-} // namespace softg::dialog
+} // namespace pv::dialog

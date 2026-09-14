@@ -13,10 +13,10 @@
 struct HWND__;
 using HWND = HWND__*;
 
-namespace softg {
+namespace pv {
 
 struct AppConfig {
-    std::string windowTitle = "SoftG App";
+    std::string windowTitle = "PlanView App";
     ImVec2 windowSize = ImVec2(1600, 900);
     std::string iniFilename = "app.ini"; // ImGui 布局持久化文件名
 };
@@ -59,4 +59,4 @@ private:
     static LRESULT WINAPI wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 };
 
-} // namespace softg
+} // namespace pv

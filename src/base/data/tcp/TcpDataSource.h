@@ -8,7 +8,7 @@
 
 #include "base/data/IDataSource.h"
 
-namespace softg::tcp {
+namespace pv::tcp {
 
 class TcpDataSource : public IDataSource {
 public:
@@ -38,4 +38,4 @@ private:
     std::string pending_;                   // 已收未满一行的字节
 };
 
-} // namespace softg::tcp
+} // namespace pv::tcp

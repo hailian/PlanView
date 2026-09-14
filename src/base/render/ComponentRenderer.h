@@ -6,7 +6,7 @@
 #include "base/model/Component.h"
 #include "base/render/RenderContext.h"
 
-namespace softg {
+namespace pv {
 
 class ComponentRenderer {
 public:
@@ -15,4 +15,4 @@ public:
                               const ImVec2& origin, float scale);
 };
 
-} // namespace softg
+} // namespace pv

@@ -2,12 +2,12 @@
 // 视图变换(缩放/平移)、选择/框选、拖动/8 手柄缩放、吸附、拖放创建、键盘操作、渲染编排。
 #pragma once
 
-namespace softg::planner {
+namespace pv::planner {
 struct PlannerContext;
 }
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 void drawCanvas(PlannerContext& ctx);
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

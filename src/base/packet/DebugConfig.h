@@ -6,7 +6,7 @@
 #include "base/packet/FrameCodec.h"
 #include "base/packet/PacketSpec.h"
 
-namespace softg::packet {
+namespace pv::packet {
 
 enum class Transport : uint8_t { Tcp, Udp };
 
@@ -31,4 +31,4 @@ bool save(const std::string& path, const DebugConfig& cfg, std::string& err);
 bool load(const std::string& path, DebugConfig& cfg, std::string& err);
 
 } // namespace debugcfg
-} // namespace softg::packet
+} // namespace pv::packet

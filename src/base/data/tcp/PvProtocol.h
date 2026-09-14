@@ -1,4 +1,4 @@
-// SoftG TCP 数据协议 v1 —— 行文本（UTF-8，\n 结尾），人可读可 telnet 调试。
+// PlanView TCP 数据协议 v1 —— 行文本（UTF-8，\n 结尾），人可读可 telnet 调试。
 //
 // 请求:
 //   PING\n                                   -> PONG\n
@@ -15,7 +15,7 @@
 
 #include "base/model/Tag.h"
 
-namespace softg::tcp {
+namespace pv::tcp {
 
 // ---- 请求构造 ----
 std::string encodePing();
@@ -41,4 +41,4 @@ WriteAck parseWriteAck(std::string_view line);
 std::string tagValueToText(const TagValue& v);
 std::optional<TagValue> parseTypedValue(std::string_view type, std::string_view text);
 
-} // namespace softg::tcp
+} // namespace pv::tcp

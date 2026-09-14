@@ -5,15 +5,15 @@
 #include "viewer/ViewerApp.h"
 
 int main(int argc, char** argv) {
-    softg::AppShell shell;
+    pv::AppShell shell;
 
-    softg::AppConfig cfg;
+    pv::AppConfig cfg;
     cfg.windowTitle = "页面展示软件 - PageViewer";
     cfg.windowSize = ImVec2(1280, 860);
     cfg.iniFilename = "PageViewer.ini";
 
-    static softg::viewer::ViewerApp app(shell);
+    static pv::viewer::ViewerApp app(shell);
     if (argc >= 2)
         app.openPath(argv[1]);  // 命令行直接打开（失败则落到欢迎界面）
-    return shell.run(cfg, [](softg::AppShell&) { return app.frame(); });
+    return shell.run(cfg, [](pv::AppShell&) { return app.frame(); });
 }

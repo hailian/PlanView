@@ -8,7 +8,7 @@
 
 #include "base/model/Project.h"
 
-namespace softg::planner {
+namespace pv::planner {
 
 class Document {
 public:
@@ -53,4 +53,4 @@ private:
     bool dirty_ = false;
 };
 
-} // namespace softg::planner
+} // namespace pv::planner

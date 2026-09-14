@@ -1,7 +1,7 @@
-# SoftG — HMI 组态软件（LogicPlanner 设计器 + PageViewer 运行器 + softg_base 共享库）
+# PlanView — HMI 组态软件（LogicPlanner 设计器 + PageViewer 运行器 + pv_base 共享库）
 cmake_minimum_required(VERSION 3.20)
 
-project(SoftG VERSION 0.1.0 LANGUAGES CXX)
+project(PlanView VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

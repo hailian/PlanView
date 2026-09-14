@@ -1,10 +1,10 @@
 // M6 单测：RuntimeEngine 三语义（绑定刷新 / 联动 / 告警锁存确认 / 写回排队）
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include "base/model/ComponentRegistry.h"
 #include "base/runtime/RuntimeEngine.h"
 
-using namespace softg;
+using namespace pv;
 
 // 构造运行时测试工程：
 //   comp-g(Gauge, value) 绑定 tagTemp；comp-l(Lamp, isOn)；comp-b(Button)

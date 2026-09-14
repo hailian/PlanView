@@ -2,7 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace softg::llm {
+namespace pv::llm {
 
 std::string aiProtoSystemPrompt() {
     return
@@ -139,4 +139,4 @@ void applyAiProto(Component& c, const AiProtoResult& r) {
     }
 }
 
-} // namespace softg::llm
+} // namespace pv::llm

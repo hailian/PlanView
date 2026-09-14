@@ -13,7 +13,7 @@
 #include "base/runtime/RuntimeEngine.h"
 #include "viewer/PollWorker.h"
 
-namespace softg::viewer {
+namespace pv::viewer {
 
 class ViewerApp {
 public:
@@ -85,4 +85,4 @@ private:
     bool exit_ = false;
 };
 
-} // namespace softg::viewer
+} // namespace pv::viewer

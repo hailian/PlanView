@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace softg::packet {
+namespace pv::packet {
 
 namespace {
 
@@ -150,4 +150,4 @@ std::string SerialLink::lastError() {
     return lastError_;
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

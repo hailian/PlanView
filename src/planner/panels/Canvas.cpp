@@ -10,7 +10,7 @@
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 namespace {
 
@@ -658,4 +658,4 @@ void drawCanvas(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

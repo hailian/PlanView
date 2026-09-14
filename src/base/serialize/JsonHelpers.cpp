@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <system_error>
 
-namespace softg::jsonx {
+namespace pv::jsonx {
 
 Json toJson(const PropertyValue& v) {
     switch (v.index()) {
@@ -151,4 +151,4 @@ LinkageAction linkageActionFromString(const std::string& s, LinkageAction fallba
     return fallback;
 }
 
-} // namespace softg::jsonx
+} // namespace pv::jsonx

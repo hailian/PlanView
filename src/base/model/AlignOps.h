@@ -6,7 +6,7 @@
 
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 enum class AlignMode { Left, HCenter, Right, Top, VCenter, Bottom };
 enum class SizeMode { Width, Height, Both };
@@ -20,4 +20,4 @@ void sizeRects(const std::vector<Rect*>& rects, const Rect& ref, SizeMode mode);
 // 就地修改：水平/垂直等距分布（保持首尾两件外缘不动；元素 <3 无操作）
 void distributeRects(const std::vector<Rect*>& rects, bool horizontal);
 
-} // namespace softg
+} // namespace pv

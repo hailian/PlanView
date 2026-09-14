@@ -1,11 +1,11 @@
 // 单测：画布对齐/尺寸/分布纯几何（AlignOps）
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include <vector>
 
 #include "base/model/AlignOps.h"
 
-using namespace softg;
+using namespace pv;
 
 static Rect mk(float x, float y, float w, float h) { return Rect{x, y, w, h}; }
 

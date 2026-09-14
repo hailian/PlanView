@@ -4,13 +4,13 @@
 #include "planner/PlannerApp.h"
 
 int main() {
-    softg::AppShell shell;
+    pv::AppShell shell;
 
-    softg::AppConfig cfg;
+    pv::AppConfig cfg;
     cfg.windowTitle = "逻辑规划软件 - LogicPlanner";
     cfg.windowSize = ImVec2(1680, 960);
     cfg.iniFilename = "LogicPlanner.ini";
 
-    static softg::planner::PlannerApp app(shell);
-    return shell.run(cfg, [](softg::AppShell&) { return app.frame(); });
+    static pv::planner::PlannerApp app(shell);
+    return shell.run(cfg, [](pv::AppShell&) { return app.frame(); });
 }

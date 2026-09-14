@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace softg::packet {
+namespace pv::packet {
 
 namespace {
 
@@ -223,4 +223,4 @@ bool decodeFrameOnce(const FramingConfig& cfg, const std::vector<uint8_t>& frame
     return true;
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

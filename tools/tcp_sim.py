@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SoftG TCP 数据服务器模拟器（联调用）
+# PlanView TCP 数据服务器模拟器（联调用）
 #
 # 协议（行文本，UTF-8，\n 结尾）:
 #   PING\n                        -> PONG\n
@@ -136,7 +136,7 @@ def main():
     init_demo_slots()
     threading.Thread(target=animate, daemon=True).start()
     with Server(("0.0.0.0", port), Handler) as srv:
-        print(f"[sim] SoftG TCP 数据服务器已启动 0.0.0.0:{port}")
+        print(f"[sim] PlanView TCP 数据服务器已启动 0.0.0.0:{port}")
         print("[sim] 演示槽位: 0-5 正弦波(float32) 6 随机游走(float32) 7 方波(bool) 8 计数器(uint16)")
         print("[sim] Ctrl+C 退出")
         try:

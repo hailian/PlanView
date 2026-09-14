@@ -11,7 +11,7 @@
 #include "base/model/Component.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 class RuntimeEngine;      // M6 实现（前向声明，运行模式注入）
 class TextureCache;
@@ -99,4 +99,4 @@ struct RenderContext {
     }
 };
 
-} // namespace softg
+} // namespace pv

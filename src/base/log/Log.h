@@ -3,15 +3,15 @@
 
 #include <cstdint>
 
-namespace softg::log {
+namespace pv::log {
 
 enum class Level : uint8_t { Debug, Info, Warn, Error };
 
 void write(Level level, const char* fmt, ...);
 
-} // namespace softg::log
+} // namespace pv::log
 
-#define SOFTG_LOG_DEBUG(...) ::softg::log::write(::softg::log::Level::Debug, __VA_ARGS__)
-#define SOFTG_LOG_INFO(...)  ::softg::log::write(::softg::log::Level::Info,  __VA_ARGS__)
-#define SOFTG_LOG_WARN(...)  ::softg::log::write(::softg::log::Level::Warn,  __VA_ARGS__)
-#define SOFTG_LOG_ERROR(...) ::softg::log::write(::softg::log::Level::Error, __VA_ARGS__)
+#define PV_LOG_DEBUG(...) ::pv::log::write(::pv::log::Level::Debug, __VA_ARGS__)
+#define PV_LOG_INFO(...)  ::pv::log::write(::pv::log::Level::Info,  __VA_ARGS__)
+#define PV_LOG_WARN(...)  ::pv::log::write(::pv::log::Level::Warn,  __VA_ARGS__)
+#define PV_LOG_ERROR(...) ::pv::log::write(::pv::log::Level::Error, __VA_ARGS__)

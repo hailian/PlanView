@@ -1,12 +1,12 @@
 // M9 单测：AI 规约生成 — LLM 响应解析（围栏容错/类型校验/枚举与字符串）+ 应用到协议组件
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include "base/llm/AiProto.h"
 #include "base/data/frame/FrameSourceSettings.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/model/Project.h"
 
-using namespace softg;
+using namespace pv;
 
 TEST_CASE("AI 规约：响应解析（带围栏 + 帧头+Length + string/enum）") {
     const char* raw =

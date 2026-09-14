@@ -1,5 +1,5 @@
 // M7 单测：报文工具 — HEX 转换 / TCP 拆帧（TLV、帧头+Length）/ 规约解析 / 配置 JSON / UDP 回环
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include <chrono>
 #include <thread>
@@ -10,12 +10,12 @@
 #include "base/packet/PacketSpec.h"
 #include "base/packet/UdpLink.h"
 
-using namespace softg::packet;
+using namespace pv::packet;
 
 static std::vector<uint8_t> hex(const char* s) {
     std::vector<uint8_t> v;
     std::string err;
-    // 注意：SoftgTest 的 CHECK/REQUIRE 宏含 return 语句，不能在非 void 函数中使用
+    // 注意：PvTest 的 CHECK/REQUIRE 宏含 return 语句，不能在非 void 函数中使用
     if (!hexToBytes(s, v, err))
         std::printf("    [hex] 解析失败: %s\n", err.c_str());
     return v;

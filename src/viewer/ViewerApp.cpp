@@ -15,10 +15,10 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // BeginViewportSideBar / SeparatorEx（与 PlannerApp 同款用法）
 
-namespace softg::viewer {
+namespace pv::viewer {
 
 static const std::vector<dialog::Filter> kProjectFilters = {
-    {"SoftG 工程 (*.json)", "*.json"}, {"所有文件 (*.*)", "*.*"}};
+    {"PlanView 工程 (*.json)", "*.json"}, {"所有文件 (*.*)", "*.*"}};
 
 static std::string valueText(const Tag* t) {
     if (!t) return "?";
@@ -59,7 +59,7 @@ bool ViewerApp::openPath(const std::string& path) {
     Project loaded;
     std::string err;
     if (!projio::load(path, loaded, err)) {
-        SOFTG_LOG_ERROR("打开工程失败: %s", err.c_str());
+        PV_LOG_ERROR("打开工程失败: %s", err.c_str());
         ImGui::Text("打开失败: %s", err.c_str());  // 本帧提示（欢迎界面显示）
         return false;
     }
@@ -78,7 +78,7 @@ bool ViewerApp::openPath(const std::string& path) {
     textures_.setBaseDir(slash == std::string::npos ? "." : dir.substr(0, slash));
 
     saveRecentPath(path);
-    SOFTG_LOG_INFO("工程已加载: %s (%d 页 / %d 标签 / %d 关联)", path.c_str(),
+    PV_LOG_INFO("工程已加载: %s (%d 页 / %d 标签 / %d 关联)", path.c_str(),
                    (int)project_.pages.size(), (int)project_.tags.all().size(),
                    (int)project_.associations.size());
     startPolling();
@@ -660,4 +660,4 @@ void ViewerApp::detailPopup(const Component& c) {
     ImGui::End();
 }
 
-} // namespace softg::viewer
+} // namespace pv::viewer

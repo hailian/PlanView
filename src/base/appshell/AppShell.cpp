@@ -18,9 +18,9 @@
 // ImGui Win32 后端的消息处理入口（后端内部导出）
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace softg {
+namespace pv {
 
-static const wchar_t* kWndClassName = L"SoftGAppShell";
+static const wchar_t* kWndClassName = L"PlanViewAppShell";
 
 LRESULT WINAPI AppShell::wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
@@ -50,7 +50,7 @@ LRESULT WINAPI AppShell::wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 bool AppShell::createWindow(const AppConfig& config) {
     // Per-Monitor DPI：保证画面与文字在不同缩放比例显示器上清晰
     if (::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == NULL) {
-        SOFTG_LOG_WARN("SetProcessDpiAwarenessContext 失败，回退系统默认 DPI 行为");
+        PV_LOG_WARN("SetProcessDpiAwarenessContext 失败，回退系统默认 DPI 行为");
     }
 
     WNDCLASSEXW wc = {};
@@ -65,7 +65,7 @@ bool AppShell::createWindow(const AppConfig& config) {
     wc.hIcon = ::LoadIconW(wc.hInstance, MAKEINTRESOURCEW(1));
     wc.hIconSm = wc.hIcon;
     if (!::RegisterClassExW(&wc)) {
-        SOFTG_LOG_ERROR("RegisterClassExW 失败 (%lu)", GetLastError());
+        PV_LOG_ERROR("RegisterClassExW 失败 (%lu)", GetLastError());
         return false;
     }
 
@@ -82,16 +82,16 @@ bool AppShell::createWindow(const AppConfig& config) {
                               rect.right - rect.left, rect.bottom - rect.top,
                               nullptr, nullptr, wc.hInstance, this);
     if (!hwnd_) {
-        SOFTG_LOG_ERROR("CreateWindowExW 失败 (%lu)", GetLastError());
+        PV_LOG_ERROR("CreateWindowExW 失败 (%lu)", GetLastError());
         return false;
     }
     // wndProc 通过 GWLP_USERDATA 取 self；必须在首次 WM_SIZE 前设置，否则 onResize 不生效
     ::SetWindowLongPtrW(hwnd_, GWLP_USERDATA, (LONG_PTR)this);
 
     // ---- 系统 DPI 缩放 ----
-    // 环境变量 SOFTG_UI_SCALE（如 1.5）可强制覆盖，便于调试与演示
+    // 环境变量 PV_UI_SCALE（如 1.5）可强制覆盖，便于调试与演示
     float scale = 0.0f;
-    if (const char* env = std::getenv("SOFTG_UI_SCALE"))
+    if (const char* env = std::getenv("PV_UI_SCALE"))
         scale = (float)std::atof(env);
     if (scale <= 0.01f) {
         UINT dpi = ::GetDpiForWindow(hwnd_);
@@ -138,7 +138,7 @@ bool AppShell::createDeviceD3D() {
             D3D11_SDK_VERSION, &sd, &swapChain_, &device_, &featureLevel, &context_);
     }
     if (FAILED(hr)) {
-        SOFTG_LOG_ERROR("D3D11CreateDeviceAndSwapChain 失败 (hr=0x%08lX)", (unsigned long)hr);
+        PV_LOG_ERROR("D3D11CreateDeviceAndSwapChain 失败 (hr=0x%08lX)", (unsigned long)hr);
         return false;
     }
     createRenderTarget();
@@ -185,7 +185,7 @@ void AppShell::onDpiChanged(float newScale, LPARAM lParam) {
         ImGui::GetStyle().ScaleAllSizes(factor);
         ImGui::GetStyle().FontScaleMain = newScale;
     }
-    SOFTG_LOG_INFO("显示器缩放变更: %.0f%%", newScale * 100.0f);
+    PV_LOG_INFO("显示器缩放变更: %.0f%%", newScale * 100.0f);
     // 按 OS 建议矩形调整窗口，保持物理尺寸观感
     const RECT* suggested = (const RECT*)lParam;
     ::SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top,
@@ -214,7 +214,7 @@ int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>&
         ImGui::GetStyle().ScaleAllSizes(dpiScale_);
         ImGui::GetStyle().FontScaleMain = dpiScale_;
     }
-    SOFTG_LOG_INFO("UI 缩放: %.0f%%", dpiScale_ * 100.0f);
+    PV_LOG_INFO("UI 缩放: %.0f%%", dpiScale_ * 100.0f);
     font::setupChineseFont(18.0f);
 
     ImGui_ImplWin32_Init(hwnd_);
@@ -252,7 +252,7 @@ int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>&
 
         HRESULT hr = swapChain_->Present(1, 0); // vsync
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-            SOFTG_LOG_ERROR("D3D 设备丢失 (hr=0x%08lX)，退出", (unsigned long)hr);
+            PV_LOG_ERROR("D3D 设备丢失 (hr=0x%08lX)，退出", (unsigned long)hr);
             running = false;
             exitCode = 1;
         }
@@ -269,4 +269,4 @@ int AppShell::run(const AppConfig& config, const std::function<bool(AppShell&)>&
 
 AppShell::~AppShell() = default;
 
-} // namespace softg
+} // namespace pv

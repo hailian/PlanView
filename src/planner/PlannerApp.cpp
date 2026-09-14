@@ -14,10 +14,10 @@
 #include "planner/panels/Pages.h"
 #include "planner/panels/Validation.h"
 
-namespace softg::planner {
+namespace pv::planner {
 
 static const std::vector<dialog::Filter> kProjectFilters = {
-    {"SoftG 工程 (*.json)", "*.json"}, {"所有文件 (*.*)", "*.*"}};
+    {"PlanView 工程 (*.json)", "*.json"}, {"所有文件 (*.*)", "*.*"}};
 
 // UTF-8 消息弹窗（MessageBoxA 不认 UTF-8 中文）
 static int msgBox(const std::string& utf8Text, const std::string& utf8Title, UINT type) {
@@ -242,4 +242,4 @@ void PlannerApp::toolbar() {
     ImGui::End();
 }
 
-} // namespace softg::planner
+} // namespace pv::planner

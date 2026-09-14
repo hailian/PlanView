@@ -2,7 +2,7 @@
 // TCP/串口字节流按 TLV / 帧头+Length 拆帧；UDP 数据报天然成帧。
 // 传输角色：客户端 connect 远端 / 服务端监听（TCP listen / UDP bind）本地端口；串口无角色。
 // 推收结合：收包线程持续成帧并解析缓存；readTags 返回各标签槽位的最新解析值。
-// v1 只收不发（supportsWrite=false），写回走原 SoftG 行协议数据源。
+// v1 只收不发（supportsWrite=false），写回走原 PlanView 行协议数据源。
 #pragma once
 
 #include <deque>
@@ -17,7 +17,7 @@
 #include "base/packet/TcpLink.h"
 #include "base/packet/UdpLink.h"
 
-namespace softg {
+namespace pv {
 
 class FrameDataSource : public IDataSource {
 public:
@@ -67,4 +67,4 @@ private:
     std::map<int, uint64_t> matchedByIdx_;    // 同上，按 framingIndex 分组（协议组）
 };
 
-} // namespace softg
+} // namespace pv

@@ -8,7 +8,7 @@
 
 #include "base/model/Project.h"  // ModbusSettings / Tag
 
-namespace softg {
+namespace pv {
 
 struct TagReadResult {
     TagName tag;
@@ -36,4 +36,4 @@ public:
     virtual bool supportsWrite() const { return true; }
 };
 
-} // namespace softg
+} // namespace pv

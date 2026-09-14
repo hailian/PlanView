@@ -2,7 +2,7 @@
 
 #include "imgui.h"
 
-namespace softg::theme {
+namespace pv::theme {
 
 namespace {
 
@@ -111,4 +111,4 @@ void applyModern() {
     io.ConfigWindowsMoveFromTitleBarOnly = true;
 }
 
-} // namespace softg::theme
+} // namespace pv::theme

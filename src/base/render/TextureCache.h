@@ -7,7 +7,7 @@
 #include <set>
 #include <string>
 
-namespace softg {
+namespace pv {
 
 class TextureCache {
 public:
@@ -38,4 +38,4 @@ private:
     std::set<std::string> failed_;
 };
 
-} // namespace softg
+} // namespace pv

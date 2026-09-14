@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <fstream>
 
-namespace softg::packet::debugcfg {
+namespace pv::packet::debugcfg {
 
 namespace {
 
@@ -139,4 +139,4 @@ bool load(const std::string& path, DebugConfig& cfg, std::string& err) {
     return true;
 }
 
-} // namespace softg::packet::debugcfg
+} // namespace pv::packet::debugcfg

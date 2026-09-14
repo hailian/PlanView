@@ -3,7 +3,7 @@
 #include <cstring>
 #include <random>
 
-namespace softg {
+namespace pv {
 namespace {
 
 void writeUint(std::vector<uint8_t>& out, uint64_t v, int n, bool bigEndian) {
@@ -156,4 +156,4 @@ std::vector<std::vector<uint8_t>> generateTestFrames(
     return out;
 }
 
-} // namespace softg
+} // namespace pv

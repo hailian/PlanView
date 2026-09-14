@@ -12,7 +12,7 @@
 #include <atomic>
 #include <thread>
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 namespace {
 
@@ -850,4 +850,4 @@ void drawInspector(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

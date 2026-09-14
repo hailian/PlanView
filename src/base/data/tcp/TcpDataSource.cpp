@@ -1,6 +1,6 @@
 #include "base/data/tcp/TcpDataSource.h"
 
-#include "base/data/tcp/SoftgProtocol.h"
+#include "base/data/tcp/PvProtocol.h"
 #include "base/log/Log.h"
 
 #include <winsock2.h>
@@ -12,7 +12,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-namespace softg::tcp {
+namespace pv::tcp {
 
 TcpDataSource::TcpDataSource(TcpSettings settings) : settings_(std::move(settings)) {}
 
@@ -71,7 +71,7 @@ bool TcpDataSource::connect(std::string& err) {
 
     sock_ = (uintptr_t)s;
     pending_.clear();
-    SOFTG_LOG_INFO("TCP 已连接 %s:%d", settings_.host.c_str(), settings_.port);
+    PV_LOG_INFO("TCP 已连接 %s:%d", settings_.host.c_str(), settings_.port);
     return true;
 }
 
@@ -223,4 +223,4 @@ bool TcpDataSource::writeTag(const Tag& tag, TagValue value, std::string& err) {
     return true;
 }
 
-} // namespace softg::tcp
+} // namespace pv::tcp

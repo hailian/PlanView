@@ -2,7 +2,7 @@
 
 #include "base/render/widgets/Widgets.h"
 
-namespace softg {
+namespace pv {
 
 void ComponentRenderer::drawComponent(ImDrawList* dl, const Component& c, const RenderContext& ctx,
                                       const ImVec2& origin, float scale) {
@@ -58,4 +58,4 @@ void ComponentRenderer::drawComponent(ImDrawList* dl, const Component& c, const 
     dl->PopClipRect();
 }
 
-} // namespace softg
+} // namespace pv

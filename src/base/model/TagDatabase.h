@@ -7,7 +7,7 @@
 #include "base/model/Tag.h"
 #include "base/model/Types.h"
 
-namespace softg {
+namespace pv {
 
 class TagDatabase {
 public:
@@ -34,4 +34,4 @@ private:
     std::vector<Tag> tags_;
 };
 
-} // namespace softg
+} // namespace pv

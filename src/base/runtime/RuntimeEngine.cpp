@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-namespace softg {
+namespace pv {
 
 namespace {
 // PropertyValue -> TagValue（Color/Vec2 不适用写标签，退化为字符串）
@@ -48,7 +48,7 @@ void RuntimeEngine::applyTagUpdates(const std::vector<TagReadResult>& updates) {
 
 void RuntimeEngine::onTagChanged(const TagName& tag, int depth) {
     if (depth > kMaxDepth) {
-        SOFTG_LOG_WARN("联动链超过 %d 层，截断 (标签 %s)", kMaxDepth, tag.c_str());
+        PV_LOG_WARN("联动链超过 %d 层，截断 (标签 %s)", kMaxDepth, tag.c_str());
         return;
     }
     const Tag* t = p_->tags.find(tag);
@@ -87,7 +87,7 @@ void RuntimeEngine::evaluateAlarmRule(const AlarmRule& rule, int depth) {
         if (rule.latching) st.latched = true;
         if (std::find(firedRules_.begin(), firedRules_.end(), rule.id) == firedRules_.end())
             firedRules_.push_back(rule.id);
-        SOFTG_LOG_INFO("告警触发: %s %s %.3g (%s)", rule.tag.c_str(),
+        PV_LOG_INFO("告警触发: %s %s %.3g (%s)", rule.tag.c_str(),
                        jsonx::comparatorToString(rule.cmp).c_str(), rule.threshold,
                        rule.id.c_str());
         for (const auto& cid : alarmAffectedComponents(rule))
@@ -161,7 +161,7 @@ void RuntimeEngine::setValueProperty(const ComponentId& compId, const std::strin
 
     if (fireValueChanged) {
         if (depth > kMaxDepth) {
-            SOFTG_LOG_WARN("联动链超过 %d 层，截断 (组件 %s)", kMaxDepth, compId.c_str());
+            PV_LOG_WARN("联动链超过 %d 层，截断 (组件 %s)", kMaxDepth, compId.c_str());
             return;
         }
         for (const auto& a : p_->associations) {
@@ -174,7 +174,7 @@ void RuntimeEngine::setValueProperty(const ComponentId& compId, const std::strin
 
 void RuntimeEngine::executeAction(const LinkageRule& rule, int depth) {
     if (depth > kMaxDepth) {
-        SOFTG_LOG_WARN("联动链超过 %d 层，截断 (%s)", kMaxDepth, rule.id.c_str());
+        PV_LOG_WARN("联动链超过 %d 层，截断 (%s)", kMaxDepth, rule.id.c_str());
         return;
     }
     switch (rule.action) {
@@ -375,4 +375,4 @@ PropertyValue RuntimeEngine::tagToPropertyValue(const TagValue& v, const Compone
     return std::get<std::string>(v);
 }
 
-} // namespace softg
+} // namespace pv

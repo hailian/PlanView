@@ -1,5 +1,5 @@
-// M5 单测：SoftG TCP 协议编解码 / 值文本化 / TCP 数据源回环（含分段重组）
-#include "SoftgTest.h"
+// M5 单测：PlanView TCP 协议编解码 / 值文本化 / TCP 数据源回环（含分段重组）
+#include "PvTest.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -9,11 +9,11 @@
 #include <thread>
 
 #include "base/data/DataSourceManager.h"
-#include "base/data/tcp/SoftgProtocol.h"
+#include "base/data/tcp/PvProtocol.h"
 #include "base/data/tcp/TcpDataSource.h"
 
-using namespace softg;
-using namespace softg::tcp;
+using namespace pv;
+using namespace pv::tcp;
 
 // ---- 协议编解码 ----
 TEST_CASE("协议请求构造") {
@@ -64,7 +64,7 @@ TEST_CASE("写应答解析与值文本化") {
 // ---- TCP 数据源回环 ----
 namespace {
 
-// 极简 SoftG TCP 数据服务器：槽位表 + 行协议；支持把应答按小片段发送（测重组）
+// 极简 PlanView TCP 数据服务器：槽位表 + 行协议；支持把应答按小片段发送（测重组）
 class FakeServer {
 public:
     void start(int fragmentBytes = 0) {

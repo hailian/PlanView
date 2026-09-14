@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <map>
 
-namespace softg {
+namespace pv {
 
 namespace {
 
@@ -91,7 +91,7 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     // 默认关 = 打开后在运行器顶栏手动启动，配置本身始终可用）
     const Component* ds = p.findComponentByType("DataSource");
     if (!ds)
-        return s; // enabled 维持工程设置（默认 false → SoftG 行协议）
+        return s; // enabled 维持工程设置（默认 false → PlanView 行协议）
 
     // 传输来自数据源组件（TCP / UDP / 串口；串口独占一组属性，角色/端口项不适用）
     s.enabled = true; // 数据源组件存在即启用
@@ -392,4 +392,4 @@ void synthesizeImplicitBindings(Project& p) {
         }
 }
 
-} // namespace softg
+} // namespace pv

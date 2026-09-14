@@ -7,7 +7,7 @@
 #include "base/packet/HexUtil.h"
 #include "base/serialize/JsonHelpers.h"
 
-namespace softg::projio {
+namespace pv::projio {
 
 using jsonx::Json;
 using jsonx::toJson;
@@ -459,4 +459,4 @@ bool load(const std::string& path, Project& project, std::string& err) {
     }
 }
 
-} // namespace softg::projio
+} // namespace pv::projio

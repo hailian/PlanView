@@ -1,6 +1,6 @@
 #include "planner/Document.h"
 
-namespace softg::planner {
+namespace pv::planner {
 
 void Document::commit(std::string_view label) {
     undo_.push_back(current_);
@@ -40,4 +40,4 @@ void Document::reset(Project p) {
     lastLabel_.clear();
 }
 
-} // namespace softg::planner
+} // namespace pv::planner

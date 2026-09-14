@@ -9,7 +9,7 @@
 
 #pragma comment(lib, "windowscodecs.lib")
 
-namespace softg {
+namespace pv {
 
 TextureCache::TextureCache(ID3D11Device* device) : device_(device) {}
 
@@ -49,7 +49,7 @@ bool TextureCache::load(const std::string& fullPath, Entry& out) {
         return SUCCEEDED(hr) ? f : nullptr;
     }();
     if (!wicFactory) {
-        SOFTG_LOG_ERROR("WIC 工厂创建失败");
+        PV_LOG_ERROR("WIC 工厂创建失败");
         return false;
     }
 
@@ -117,8 +117,8 @@ bool TextureCache::load(const std::string& fullPath, Entry& out) {
     if (frame) frame->Release();
     decoder->Release();
     if (ok)
-        SOFTG_LOG_INFO("贴图加载成功: %s (%dx%d)", fullPath.c_str(), out.w, out.h);
+        PV_LOG_INFO("贴图加载成功: %s (%dx%d)", fullPath.c_str(), out.w, out.h);
     return ok;
 }
 
-} // namespace softg
+} // namespace pv

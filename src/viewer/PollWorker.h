@@ -17,14 +17,14 @@
 #include "base/model/Project.h"
 #include "base/packet/SerialLink.h"
 
-namespace softg::viewer {
+namespace pv::viewer {
 
 class PollWorker {
 public:
     ~PollWorker() { stop(); }
 
     // 启动（工程设置 + tag 定义做 worker 私有快照；UI 侧后续编辑不影响运行）
-    // 帧数据源启用时创建 FrameDataSource，否则使用 SoftG TCP 行协议数据源
+    // 帧数据源启用时创建 FrameDataSource，否则使用 PlanView TCP 行协议数据源
     void start(const ProjectSettings& settings, const std::vector<Tag>& tags);
     void stop();
     bool running() const { return thread_.joinable(); }
@@ -87,4 +87,4 @@ private:
     std::map<int, uint64_t> matchedByIdx_;
 };
 
-} // namespace softg::viewer
+} // namespace pv::viewer

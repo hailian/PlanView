@@ -6,7 +6,7 @@
 #include "imgui_stdlib.h"
 #include "planner/PlannerContext.h"
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 namespace {
 
@@ -142,4 +142,4 @@ void drawTags(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

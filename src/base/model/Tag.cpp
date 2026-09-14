@@ -1,6 +1,6 @@
 #include "base/model/Tag.h"
 
-namespace softg {
+namespace pv {
 
 const char* tagDataTypeName(TagDataType t) {
     switch (t) {
@@ -30,4 +30,4 @@ double Tag::numeric() const {
     return 0.0;
 }
 
-} // namespace softg
+} // namespace pv

@@ -7,7 +7,7 @@
 
 #include "base/render/TextureCache.h"
 
-namespace softg::widgets {
+namespace pv::widgets {
 
 using namespace std::chrono;
 
@@ -733,4 +733,4 @@ void drawUnknown(ImDrawList* dl, const ScreenRect& r, const Component& c, const 
                 IM_COL32(255, 220, 220, 255), text.c_str());
 }
 
-} // namespace softg::widgets
+} // namespace pv::widgets

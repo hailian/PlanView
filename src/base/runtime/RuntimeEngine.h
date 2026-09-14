@@ -14,7 +14,7 @@
 #include "base/model/Project.h"
 #include "base/render/RenderContext.h"
 
-namespace softg {
+namespace pv {
 
 // UI 待消费动作（导航 / 写标签回传）
 struct PendingAction {
@@ -107,4 +107,4 @@ private:
     std::vector<PendingAction> actions_;
 };
 
-} // namespace softg
+} // namespace pv

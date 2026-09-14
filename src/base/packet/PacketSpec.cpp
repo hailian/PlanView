@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace softg::packet {
+namespace pv::packet {
 
 const char* fieldTypeToString(FieldType t) {
     switch (t) {
@@ -199,4 +199,4 @@ std::vector<ParsedField> parsePacket(const std::vector<PacketField>& fields,
     return out;
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

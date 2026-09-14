@@ -2,9 +2,9 @@
 // 必须在 ImGui context 创建后、首帧前调用一次。
 #pragma once
 
-namespace softg::font {
+namespace pv::font {
 
 // 返回实际加载的字体名（用于日志/诊断）。
 const char* setupChineseFont(float sizePixels);
 
-} // namespace softg::font
+} // namespace pv::font

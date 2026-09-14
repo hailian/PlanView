@@ -13,7 +13,7 @@ add_executable(LogicPlanner
     panels/Tags.cpp
     panels/Validation.cpp
 )
-target_link_libraries(LogicPlanner PRIVATE softg_base)
+target_link_libraries(LogicPlanner PRIVATE pv_base)
 if(MSVC)
     target_compile_options(LogicPlanner PRIVATE /W3)
 endif()

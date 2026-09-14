@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace softg::packet {
+namespace pv::packet {
 
 // "AA BB CC"（大写、单空格分隔）
 std::string bytesToHex(const std::vector<uint8_t>& bytes);
@@ -14,4 +14,4 @@ std::string bytesToHex(const std::vector<uint8_t>& bytes);
 // 非法字符或奇数个 hex 位时返回 false，err 给出原因。
 bool hexToBytes(const std::string& text, std::vector<uint8_t>& out, std::string& err);
 
-} // namespace softg::packet
+} // namespace pv::packet

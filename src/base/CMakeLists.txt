@@ -1,5 +1,5 @@
-# softg_base — 逻辑规划软件与页面展示软件共用的静态库
-add_library(softg_base STATIC
+# pv_base — 逻辑规划软件与页面展示软件共用的静态库
+add_library(pv_base STATIC
     appshell/AppShell.cpp
     appshell/FileDialog.cpp
     appshell/FontSetup.cpp
@@ -25,21 +25,21 @@ add_library(softg_base STATIC
     data/frame/FrameDataSource.cpp
     data/frame/FrameSourceSettings.cpp
     data/frame/TestFrameGen.cpp
-    data/tcp/SoftgProtocol.cpp
+    data/tcp/PvProtocol.cpp
     data/tcp/TcpDataSource.cpp
     llm/AiProto.cpp
     llm/LlmClient.cpp
     runtime/RuntimeEngine.cpp
 )
 
-target_include_directories(softg_base PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_compile_definitions(softg_base PUBLIC
+target_include_directories(pv_base PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(pv_base PUBLIC
     NOMINMAX
     WIN32_LEAN_AND_MEAN
     _WIN32_WINNT=0x0A00
 )
 
-target_link_libraries(softg_base PUBLIC
+target_link_libraries(pv_base PUBLIC
     imgui
     nlohmann_json::nlohmann_json
     d3d11
@@ -49,5 +49,5 @@ target_link_libraries(softg_base PUBLIC
 )
 
 if(MSVC)
-    target_compile_options(softg_base PRIVATE /W3)
+    target_compile_options(pv_base PRIVATE /W3)
 endif()

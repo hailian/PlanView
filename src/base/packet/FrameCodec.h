@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace softg::packet {
+namespace pv::packet {
 
 enum class FrameMode : uint8_t { Tlv, HeaderLength };
 
@@ -67,4 +67,4 @@ private:
 bool decodeFrameOnce(const FramingConfig& cfg, const std::vector<uint8_t>& frame,
                      int64_t& tagId, const uint8_t*& payload, int& payloadLen);
 
-} // namespace softg::packet
+} // namespace pv::packet

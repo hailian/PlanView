@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace softg::packet {
+namespace pv::packet {
 
 enum class FieldType : uint8_t {
     U8, I8, U16, I16, U32, I32, F32, F64,
@@ -62,4 +62,4 @@ struct PacketSpec {
     std::vector<PacketField> fields;
 };
 
-} // namespace softg::packet
+} // namespace pv::packet

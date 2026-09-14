@@ -5,7 +5,7 @@
 
 #include <chrono>
 
-namespace softg::viewer {
+namespace pv::viewer {
 
 void PollWorker::start(const ProjectSettings& settings, const std::vector<Tag>& tags) {
     stop();
@@ -74,7 +74,7 @@ void PollWorker::pushResultLocked(std::vector<TagReadResult>&& results) {
 
 void PollWorker::run() {
     DataSourceManager mgr;
-    // 数据源组件选择：帧数据源（TCP/UDP/串口 + 自配置规约）或 SoftG 行协议
+    // 数据源组件选择：帧数据源（TCP/UDP/串口 + 自配置规约）或 PlanView 行协议
     std::unique_ptr<IDataSource> ds;
     if (settings_.frame.enabled) {
         ds = mgr.createFrame(settings_.frame);
@@ -151,7 +151,7 @@ void PollWorker::run() {
         }
         if (!ds->supportsWrite()) {
             if (!writes.empty())
-                SOFTG_LOG_WARN("帧数据源不支持写回，丢弃 %d 条写请求", (int)writes.size());
+                PV_LOG_WARN("帧数据源不支持写回，丢弃 %d 条写请求", (int)writes.size());
         } else {
             bool writeFailed = false;
             for (auto& [name, value] : writes) {
@@ -161,7 +161,7 @@ void PollWorker::run() {
                 if (!t) continue;
                 std::string err;
                 if (!ds->writeTag(*t, value, err)) {
-                    SOFTG_LOG_WARN("写标签 %s 失败: %s", name.c_str(), err.c_str());
+                    PV_LOG_WARN("写标签 %s 失败: %s", name.c_str(), err.c_str());
                     writeFailed = true;
                     std::lock_guard<std::mutex> g(m_);
                     lastError_ = err;
@@ -269,4 +269,4 @@ void PollWorker::forwardFrames(const std::deque<FrameDataSource::FrameLogEntry>&
     }
 }
 
-} // namespace softg::viewer
+} // namespace pv::viewer

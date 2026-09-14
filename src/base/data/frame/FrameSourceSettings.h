@@ -1,5 +1,5 @@
 // FrameSourceSettings — 帧数据源配置：传输(TCP/UDP) + TCP 拆帧参数 + 规约字段→标签槽位映射。
-// 随工程 JSON 持久化；enabled=false 时使用原 SoftG TCP 行协议数据源。
+// 随工程 JSON 持久化；enabled=false 时使用原 PlanView TCP 行协议数据源。
 #pragma once
 
 #include <string>
@@ -9,7 +9,7 @@
 #include "base/packet/FrameCodec.h"
 #include "base/packet/PacketSpec.h"  // FieldType
 
-namespace softg {
+namespace pv {
 
 class Project; // 前向声明（Project.h 反向包含本文件，勿加完整定义）
 class Page;
@@ -51,7 +51,7 @@ struct FrameSinkSettings {
 };
 
 struct FrameSourceSettings {
-    bool enabled = false;            // true=帧数据源；false=原 SoftG TCP 行协议
+    bool enabled = false;            // true=帧数据源；false=原 PlanView TCP 行协议
     bool autoStart = false;          // 仅帧数据源：true=PageViewer 打开即连接；false=顶栏手动启动
     bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
     bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
@@ -113,4 +113,4 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
 // 幂等：重复调用不重复创建；字段/协议不存在时跳过（校验面板负责提示）。
 void synthesizeImplicitBindings(Project& p);
 
-} // namespace softg
+} // namespace pv

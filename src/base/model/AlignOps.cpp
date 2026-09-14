@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace softg {
+namespace pv {
 
 void alignRects(const std::vector<Rect*>& rects, const Rect& ref, AlignMode mode) {
     switch (mode) {
@@ -75,4 +75,4 @@ void distributeRects(const std::vector<Rect*>& rects, bool horizontal) {
     }
 }
 
-} // namespace softg
+} // namespace pv

@@ -6,7 +6,7 @@
 
 #include "base/model/Project.h"
 
-namespace softg::projio {
+namespace pv::projio {
 
 inline constexpr int kCurrentSchemaVersion = 1;
 
@@ -21,4 +21,4 @@ std::string dump(const Project& project);
 // 从字符串解析
 bool parse(const std::string& text, Project& project, std::string& err);
 
-} // namespace softg::projio
+} // namespace pv::projio

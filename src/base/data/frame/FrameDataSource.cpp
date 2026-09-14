@@ -6,7 +6,7 @@
 #include <cmath>
 #include <ctime>
 
-namespace softg {
+namespace pv {
 
 namespace {
 
@@ -290,4 +290,4 @@ std::map<int, uint64_t> FrameDataSource::matchedFrameCountByIndex() const {
     return matchedByIdx_;
 }
 
-} // namespace softg
+} // namespace pv

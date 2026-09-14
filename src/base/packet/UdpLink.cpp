@@ -15,7 +15,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-namespace softg::packet {
+namespace pv::packet {
 
 namespace {
 
@@ -75,7 +75,7 @@ bool UdpLink::start(int localPort, std::string& err, const std::string& filterIp
         return false;
     }
     launch((uintptr_t)s);
-    SOFTG_LOG_INFO("UDP 监听启动: 端口 %d", localPort);
+    PV_LOG_INFO("UDP 监听启动: 端口 %d", localPort);
     return true;
 }
 
@@ -104,7 +104,7 @@ bool UdpLink::startClient(const std::string& host, int port, std::string& err) {
                &bytesReturned, nullptr, nullptr);
     setRemote(host, port); // 使 send() 可用
     launch((uintptr_t)s);
-    SOFTG_LOG_INFO("UDP 客户端连接: %s:%d", host.c_str(), port);
+    PV_LOG_INFO("UDP 客户端连接: %s:%d", host.c_str(), port);
     return true;
 }
 
@@ -117,7 +117,7 @@ void UdpLink::stop() {
         sock_ = (uintptr_t)-1;
     }
     ::WSACleanup();
-    SOFTG_LOG_INFO("UDP 监听停止");
+    PV_LOG_INFO("UDP 监听停止");
 }
 
 void UdpLink::setRemote(const std::string& host, int port) {
@@ -179,4 +179,4 @@ void UdpLink::recvLoop() {
     }
 }
 
-} // namespace softg::packet
+} // namespace pv::packet

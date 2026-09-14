@@ -8,7 +8,7 @@
 #include "base/model/Component.h"
 #include "base/render/RenderContext.h"
 
-namespace softg::widgets {
+namespace pv::widgets {
 
 void drawLabel(ImDrawList* dl, const ScreenRect& r, const Component& c, const RenderContext& ctx,
                float scale);
@@ -41,4 +41,4 @@ void drawProtocolGroup(ImDrawList* dl, const ScreenRect& r, const Component& c,
 void drawUnknown(ImDrawList* dl, const ScreenRect& r, const Component& c, const RenderContext& ctx,
                  float scale);
 
-} // namespace softg::widgets
+} // namespace pv::widgets

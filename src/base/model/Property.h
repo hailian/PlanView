@@ -11,7 +11,7 @@
 
 #include "imgui.h"
 
-namespace softg {
+namespace pv {
 
 enum class PropertyType : uint8_t {
     Bool,
@@ -76,4 +76,4 @@ inline double toNumber(const PropertyValue& v) { return asDouble(v); }
 // 组件属性容器：key -> value（std::less<> 允许 string_view 查找；序列化天然按 key 排序）
 using PropertyMap = std::map<std::string, PropertyValue, std::less<>>;
 
-} // namespace softg
+} // namespace pv

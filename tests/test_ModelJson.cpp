@@ -1,5 +1,5 @@
 // M1 单测：领域模型 + JSON 序列化
-#include "SoftgTest.h"
+#include "PvTest.h"
 
 #include <cstdio>
 #include <fstream>
@@ -10,7 +10,7 @@
 #include "base/model/TagDatabase.h"
 #include "base/serialize/ProjectJson.h"
 
-using namespace softg;
+using namespace pv;
 
 // 构造一个覆盖全部 9 种组件 + 三类关联 + 标签的完整工程
 static Project makeFullProject() {

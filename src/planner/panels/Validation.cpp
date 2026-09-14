@@ -3,7 +3,7 @@
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
-namespace softg::planner::panels {
+namespace pv::planner::panels {
 
 void drawValidation(PlannerContext& ctx) {
     if (!ImGui::Begin("校验")) {
@@ -242,4 +242,4 @@ void drawValidation(PlannerContext& ctx) {
     ImGui::End();
 }
 
-} // namespace softg::planner::panels
+} // namespace pv::planner::panels

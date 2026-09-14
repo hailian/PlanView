@@ -8,7 +8,7 @@
 #include "base/data/IDataSource.h"
 #include "base/data/frame/FrameSourceSettings.h"
 
-namespace softg {
+namespace pv {
 
 class DataSourceManager {
 public:
@@ -26,4 +26,4 @@ private:
     bool wsaOk_ = false;
 };
 
-} // namespace softg
+} // namespace pv

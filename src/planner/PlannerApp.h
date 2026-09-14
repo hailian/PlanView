@@ -3,7 +3,7 @@
 
 #include "base/appshell/AppShell.h"
 #include "planner/PlannerContext.h"
-namespace softg::planner {
+namespace pv::planner {
 
 class PlannerApp {
 public:
@@ -32,4 +32,4 @@ private:
 
 };
 
-} // namespace softg::planner
+} // namespace pv::planner
