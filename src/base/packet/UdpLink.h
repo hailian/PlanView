@@ -49,6 +49,7 @@ private:
 
     uintptr_t sock_ = (uintptr_t)-1; // SOCKET
     std::atomic<bool> running_{false};
+    bool connected_ = false; // 客户端 connect 过：send() 走已连接快路径（免逐包地址校验）
     std::thread thread_;
     std::mutex mutex_;
     std::deque<UdpPacket> inbox_;

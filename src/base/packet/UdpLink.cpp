@@ -44,6 +44,10 @@ static SOCKET makeSocket(std::string& err) {
         err = "socket 创建失败";
         ::WSACleanup();
     }
+    // 加大收包缓冲：默认 ~64KB 只够千余个小报文，设备突发/高帧率下内核先丢
+    //（尽力而为调大，失败不阻断）
+    int rcvBuf = 1 << 20;
+    ::setsockopt(s, SOL_SOCKET, SO_RCVBUF, (const char*)&rcvBuf, sizeof(rcvBuf));
     return s;
 }
 
@@ -74,6 +78,7 @@ bool UdpLink::start(int localPort, std::string& err, const std::string& filterIp
         ::WSACleanup();
         return false;
     }
+    connected_ = false;
     launch((uintptr_t)s);
     PV_LOG_INFO("UDP 监听启动: 端口 %d", localPort);
     return true;
@@ -103,6 +108,7 @@ bool UdpLink::startClient(const std::string& host, int port, std::string& err) {
     ::WSAIoctl(s, SIO_UDP_CONNRESET, &reportConnReset, sizeof(reportConnReset), nullptr, 0,
                &bytesReturned, nullptr, nullptr);
     setRemote(host, port); // 使 send() 可用
+    connected_ = true;
     launch((uintptr_t)s);
     PV_LOG_INFO("UDP 客户端连接: %s:%d", host.c_str(), port);
     return true;
@@ -133,6 +139,15 @@ bool UdpLink::send(const std::vector<uint8_t>& data, std::string& err) {
     if (sock_ == (uintptr_t)-1) {
         err = "UDP 未启动，请先绑定本地端口";
         return false;
+    }
+    // 连接式 socket 走 send()：内核跳过逐包目的地址处理，回环小包高频发送可测出差距
+    if (connected_) {
+        int n = ::send((SOCKET)sock_, (const char*)data.data(), (int)data.size(), 0);
+        if (n == SOCKET_ERROR) {
+            err = "发送失败 (WSA=" + std::to_string(WSAGetLastError()) + ")";
+            return false;
+        }
+        return true;
     }
     uint32_t addrNet = 0;
     {
@@ -166,6 +181,11 @@ void UdpLink::drain(std::deque<UdpPacket>& out) {
 
 void UdpLink::recvLoop() {
     char buf[65535];
+    // 对端字符串缓存：同一设备连发时免逐包 inet_ntop + 组串（收包热路径）。
+    // 仅本线程读写，无锁
+    sockaddr_in lastFrom{};
+    char lastIp[64] = {};
+    std::string lastFromText;
     while (running_) {
         sockaddr_in from{};
         int fromLen = sizeof(from);
@@ -175,15 +195,18 @@ void UdpLink::recvLoop() {
                 continue;
             break; // socket 已关闭或其他错误
         }
-        char ip[64];
-        ::inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip));
+        if (::memcmp(&from, &lastFrom, sizeof(from)) != 0) {
+            ::inet_ntop(AF_INET, &from.sin_addr, lastIp, sizeof(lastIp));
+            lastFromText = std::string(lastIp) + ":" + std::to_string(ntohs(from.sin_port));
+            lastFrom = from;
+        }
         // 监听过滤：三元组 dip/dport 反向命中（源 == 过滤器）；未命中丢弃。
         // dip="*" 时不限 IP（正向场景：凡到达本端口的报文均命中）
-        if ((filterIp_ != "*" && filterIp_ != ip) ||
+        if ((filterIp_ != "*" && filterIp_ != lastIp) ||
             (filterPort_ != 0 && (int)ntohs(from.sin_port) != filterPort_))
             continue;
         UdpPacket pkt;
-        pkt.from = std::string(ip) + ":" + std::to_string(ntohs(from.sin_port));
+        pkt.from = lastFromText;
         pkt.data.assign(buf, buf + n);
         std::lock_guard<std::mutex> lock(mutex_);
         inbox_.push_back(std::move(pkt));

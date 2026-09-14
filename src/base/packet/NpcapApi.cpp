@@ -26,6 +26,7 @@ bool resolve(HMODULE m, Api& api) {
     if (!req("pcap_dispatch", (void**)&api.dispatch)) return false;
     if (!req("pcap_geterr", (void**)&api.geterr)) return false;
     if (!req("pcap_datalink", (void**)&api.datalink)) return false;
+    if (!req("pcap_sendpacket", (void**)&api.sendpacket)) return false;
     api.module = m;
     return true;
 }

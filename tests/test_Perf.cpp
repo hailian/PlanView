@@ -14,6 +14,7 @@
 #include "base/data/frame/TestFrameGen.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/FrameCodec.h"
+#include "base/packet/NpcapApi.h"
 #include "base/packet/PacketSpec.h"
 #include "base/packet/UdpLink.h"
 
@@ -23,6 +24,12 @@ namespace {
 
 double secondsSince(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+}
+
+// 批间短自旋间隙：让收包线程跟上（sleep 受 Windows 15.6ms 定时器分辨率限制）
+void spinGapUs(int us) {
+    auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(us);
+    while (std::chrono::steady_clock::now() < end) std::this_thread::yield();
 }
 
 // 泵站上行帧样板：帧头+Length（AA 55 | len(2B,BE,负载长) | 负载 32B，整帧 36B）。
@@ -141,8 +148,8 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
     const int N = 20000;
     // 分批发送+转发：小批量突发 + 批间短间隙，避免溢出内核收包缓冲造成 UDP 丢包
     //（丢包属传输而非转发语义，性能测试须零丢失对账；转发队列已与 200 条上限的
-    // 监视日志解耦，批量本身不再受日志上限约束）
-    const int batch = 100;
+    // 监视日志解耦。UdpLink 已加大 SO_RCVBUF，批 200 + 间隙 100µs 实测零丢失）
+    const int batch = 200;
     auto frames = generateTestFrames(fr, fields, N, 11);
     REQUIRE(frames.size() == (size_t)N);
 
@@ -210,10 +217,8 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
     for (int b = 0; b < N / batch; ++b) {
         for (int i = 0; i < batch; ++i, ++sent)
             REQUIRE(sender.send(frames[sent], err));
-        // 批间短暂间隙让收包线程跟上内核队列。不能用 sleep_for：Windows 默认
-        // 定时器分辨率 ~15.6ms，1ms 的睡眠实际睡一个量子，吞吐会被压在定时器上
-        auto gapEnd = std::chrono::steady_clock::now() + std::chrono::microseconds(300);
-        while (std::chrono::steady_clock::now() < gapEnd) std::this_thread::yield();
+        // 批间短暂间隙让收包线程跟上内核队列（原因见 spinGapUs 注释）
+        spinGapUs(100);
         // PollWorker 同款路径：readTags 驱动收包+解析，转发队列经数据目的原样转发
         //（转发已与 200 条上限的监视日志解耦，走专用 drainForwardFrames）
         (void)src.readTags(tagPtrs);
@@ -245,12 +250,167 @@ TEST_CASE("性能：数据源→数据目的 UDP 回环转发") {
     double mbps = (double)rxBytes / sec / 1024.0 / 1024.0;
     std::printf("    [perf] 数据源→数据目的转发 %.0f 帧/秒（%.1f MB/s；%dB/帧 × %d 帧，耗时 %.0f ms）\n",
                 fps, mbps, (int)frames[0].size(), N, sec * 1000.0);
-    // 本机 x64-release 参考约 3.6 万帧/秒（瓶颈在回环 syscalls 与小包协议栈）；
-    // 下限取约 1/7，防数量级退化
-    CHECK(fps >= 5000.0);
+    // 本机 x64-release（虚拟机）参考约 4 万帧/秒，后台负载波动时可到 2.7 万仍零丢失；
+    // 剩余瓶颈为每帧两跳 ~10µs 的回环 syscall（UDP 数据报无法合并发送）。
+    // 下限取约 1/4，防数量级退化
+    CHECK(fps >= 10000.0);
 
     sender.stop();
     sink.stop();
     receiver.stop();
     src.disconnect();
+}
+
+TEST_CASE("性能：回环发包对比 sendto vs Npcap pcap_sendpacket") {
+#ifndef NDEBUG
+    std::printf("    [skip] 性能测试仅在 Release 构建运行（Debug 未优化，数值无参考意义）\n");
+    return;
+#endif
+    // 门控：Npcap 可用且能找到回环设备（\Device\NPF_Loopback）
+    std::string err;
+    const packet::npcap::Api* api = packet::npcap::instance(err);
+    if (!api) {
+        std::printf("    [skip] %s\n", err.c_str());
+        return;
+    }
+    std::string loopName;
+    {
+        packet::npcap::PcapIf* devs = nullptr;
+        char ebuf[256] = {};
+        if (api->findalldevs(&devs, ebuf) != 0) {
+            std::printf("    [skip] 枚举网卡失败: %s\n", ebuf);
+            return;
+        }
+        for (auto* it = devs; it; it = it->next) {
+            std::string n = it->name ? it->name : "";
+            if (n.find("Loopback") != std::string::npos) {
+                loopName = n;
+                break;
+            }
+        }
+        api->freealldevs(devs);
+    }
+    if (loopName.empty()) {
+        std::printf("    [skip] 未找到 Npcap 回环设备（安装 Npcap 时需勾选回环支持）\n");
+        return;
+    }
+    char ebuf[256] = {};
+    auto* pc = api->open_live(loopName.c_str(), 65535, 0, 100, ebuf);
+    if (!pc) {
+        std::printf("    [skip] 回环设备打开失败: %s\n", ebuf);
+        return;
+    }
+    const int dl = api->datalink(pc);
+    if (dl != 0 && dl != 12) { // 0=DLT_NULL（4B 族头）/ 12=DLT_RAW（无链路头）
+        std::printf("    [skip] 回环链路层类型 %d 暂不支持\n", dl);
+        api->close(pc);
+        return;
+    }
+
+    const int kPort = 59363, kSport = 59364;
+    const int N = 20000, batch = 100;
+    // 36B 样板负载（与转发测试同规格的帧头+Length 帧）
+    const uint8_t payload[36] = {0xAA, 0x55, 0x00, 0x20};
+    std::vector<uint8_t> dat(payload, payload + sizeof(payload));
+
+    // Npcap 注入模板：链路头 + IPv4(20B, 校验和) + UDP(8B, 校验和=0 合法) + 负载
+    std::vector<uint8_t> pkt;
+    if (dl == 0) { // DLT_NULL：4 字节主机字节序 AF_INET
+        const uint8_t fam[] = {2, 0, 0, 0};
+        pkt.insert(pkt.end(), fam, fam + 4);
+    }
+    const size_t ipOff = pkt.size();
+    const uint16_t totalLen = 20 + 8 + (uint16_t)sizeof(payload);
+    const uint8_t ipHead[20] = {
+        0x45, 0x00, (uint8_t)(totalLen >> 8), (uint8_t)totalLen,
+        0x00, 0x00, 0x00, 0x00, 0x40, 0x11, 0x00, 0x00,
+        127, 0, 0, 1, 127, 0, 0, 1};
+    pkt.insert(pkt.end(), ipHead, ipHead + 20);
+    const uint16_t udpLen = 8 + (uint16_t)sizeof(payload);
+    const uint8_t udpHead[8] = {
+        (uint8_t)(kSport >> 8), (uint8_t)kSport, (uint8_t)(kPort >> 8), (uint8_t)kPort,
+        (uint8_t)(udpLen >> 8), (uint8_t)udpLen, 0x00, 0x00};
+    pkt.insert(pkt.end(), udpHead, udpHead + 8);
+    pkt.insert(pkt.end(), payload, payload + sizeof(payload));
+    { // IPv4 头校验和（回环路径通常不校验，构全以防万一）
+        uint32_t sum = 0;
+        for (int i = 0; i < 20; i += 2)
+            sum += (pkt[ipOff + i] << 8) | pkt[ipOff + i + 1];
+        while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
+        uint16_t cks = (uint16_t)(~sum);
+        pkt[ipOff + 10] = (uint8_t)(cks >> 8);
+        pkt[ipOff + 11] = (uint8_t)cks;
+    }
+
+    packet::UdpLink receiver;
+    if (!receiver.start(kPort, err)) {
+        std::printf("    [skip] 端口 %d 绑定失败: %s\n", kPort, err.c_str());
+        api->close(pc);
+        return;
+    }
+    std::deque<packet::UdpPacket> rx;
+    auto drainCount = [&](uint64_t& n) {
+        receiver.drain(rx);
+        n += rx.size();
+        rx.clear();
+    };
+    auto waitQuiesce = [&]() { // 等收包线程清空（换路前不串数）
+        for (int i = 0; i < 30; ++i) {
+            receiver.drain(rx);
+            bool empty = rx.empty();
+            rx.clear();
+            if (empty) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    };
+
+    // 路径 A：Winsock sendto（现行转发路径同款）
+    uint64_t gotA = 0;
+    double secA = 0;
+    {
+        packet::UdpLink snd;
+        REQUIRE(snd.start(0, err));
+        snd.setRemote("127.0.0.1", kPort);
+        auto t0 = std::chrono::steady_clock::now();
+        for (int b = 0; b < N / batch; ++b) {
+            for (int i = 0; i < batch; ++i) CHECK(snd.send(dat, err));
+            spinGapUs(300);
+            drainCount(gotA);
+        }
+        secA = secondsSince(t0);
+        for (int i = 0; i < 200 && gotA < (uint64_t)N; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            drainCount(gotA);
+        }
+        snd.stop();
+    }
+    waitQuiesce();
+
+    // 路径 B：Npcap pcap_sendpacket 驱动级注入（手工 IP/UDP 头）
+    uint64_t gotB = 0;
+    double secB = 0;
+    {
+        auto t0 = std::chrono::steady_clock::now();
+        for (int b = 0; b < N / batch; ++b) {
+            for (int i = 0; i < batch; ++i)
+                CHECK(api->sendpacket(pc, pkt.data(), (int)pkt.size()) == 0);
+            spinGapUs(300);
+            drainCount(gotB);
+        }
+        secB = secondsSince(t0);
+        for (int i = 0; i < 200 && gotB < (uint64_t)N; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            drainCount(gotB);
+        }
+    }
+
+    CHECK(gotA == (uint64_t)N); // 基线路径必须零丢失（否则测量无效）
+    std::printf("    [perf] sendto        %.0f 帧/秒（送达 %llu/%d，%.0f ms）\n",
+                N / secA, (unsigned long long)gotA, N, secA * 1000.0);
+    std::printf("    [perf] pcap_sendpkt  %.0f 帧/秒（送达 %llu/%d，%.0f ms）\n",
+                N / secB, (unsigned long long)gotB, N, secB * 1000.0);
+    // Npcap 路径不设硬阈值：能否送达协议栈取决于驱动/系统配置，本用例做对比观测
+
+    api->close(pc);
+    receiver.stop();
 }

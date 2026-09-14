@@ -57,6 +57,7 @@ struct Api {
                     unsigned char* user) = nullptr;
     char* (*geterr)(PcapT* handle) = nullptr;
     int (*datalink)(PcapT* handle) = nullptr;
+    int (*sendpacket)(PcapT* handle, const unsigned char* buf, int size) = nullptr;
 };
 
 // 加载 wpcap.dll 并解析函数指针；失败返回 false + err（含安装提示）。
