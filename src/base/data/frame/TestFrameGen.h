@@ -19,4 +19,9 @@ std::vector<std::vector<uint8_t>> generateTestFrames(const packet::FramingConfig
                                                      const std::vector<TagField>& fields,
                                                      int count, uint32_t seed = 0);
 
+// 协议组多帧头：按字段 framingIndex 分组，各组用对应配置生成（配置数须覆盖最大索引）
+std::vector<std::vector<uint8_t>> generateTestFrames(
+    const std::vector<packet::FramingConfig>& framings, const std::vector<TagField>& fields,
+    int count, uint32_t seed = 0);
+
 } // namespace softg

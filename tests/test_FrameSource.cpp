@@ -218,6 +218,143 @@ TEST_CASE("协议组：数据源关联组 -> 组内字段合并（拆帧取首�
     REQUIRE(both.fields.size() == 2); // 组内两协议合并（单协议被组覆盖）
 }
 
+TEST_CASE("协议组多帧头：AA55 帧只驱动 AA55 协议字段，AA56 帧只驱动 AA56 协议") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+
+    // 协议A：帧头 AA 55，负载 2 字节 u16
+    Component pa = ComponentRegistry::createComponent("ProtocolConfig", "pa");
+    pa.name = "协议A";
+    pa.setProp("framingMode", std::string("帧头+Length"));
+    pa.setProp("headerHex", std::string("AA 55"));
+    pa.setProp("fieldCount", int64_t(1));
+    pa.setProp("f0.name", std::string("阀位"));
+    pa.setProp("f0.offset", int64_t(0));
+    pa.setProp("f0.type", std::string("u16"));
+    p.pages[0].components.push_back(pa);
+    // 协议B：帧头 AA 56，负载 2 字节 u16
+    Component pb = ComponentRegistry::createComponent("ProtocolConfig", "pb");
+    pb.name = "协议B";
+    pb.setProp("framingMode", std::string("帧头+Length"));
+    pb.setProp("headerHex", std::string("AA 56"));
+    pb.setProp("fieldCount", int64_t(1));
+    pb.setProp("f0.name", std::string("转速"));
+    pb.setProp("f0.offset", int64_t(0));
+    pb.setProp("f0.type", std::string("u16"));
+    p.pages[0].components.push_back(pb);
+
+    Component grp = ComponentRegistry::createComponent("ProtocolGroup", "grp");
+    grp.name = "双帧头组";
+    grp.setProp("protoCount", int64_t(2));
+    grp.setProp("p0.name", std::string("协议A"));
+    grp.setProp("p1.name", std::string("协议B"));
+    p.pages[0].components.push_back(grp);
+
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("autoStart", true);
+    ds.setProp("group", std::string("双帧头组"));
+    p.pages[0].components.push_back(ds);
+
+    FrameSourceSettings st = frameSettingsFromProject(p);
+    CHECK(st.enabled);
+    REQUIRE(st.fields.size() == 2);
+    CHECK(st.framings.size() == 2);                 // 两条不同帧头的配置
+    CHECK(st.fields[0].framingIndex == 0);          // 阀位 -> AA55
+    CHECK(st.fields[1].framingIndex == 1);          // 转速 -> AA56
+    std::vector<uint8_t> h55{0xAA, 0x55}, h56{0xAA, 0x56};
+    CHECK(st.framings[0].header == h55);
+    CHECK(st.framings[1].header == h56);
+
+    // UDP 回环：AA55 帧发 0x0064(100)，AA56 帧发 0x0100(256)
+    // 帧格式：帧头(2) + len(2, 大端, 负载长) + 负载(2)
+    FrameSourceSettings cfg = st; // 直接用合成配置，仅改传输
+    cfg.udp = true;
+    cfg.localPort = 59326;
+    cfg.remotePort = 59326;
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59326 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("127.0.0.1", 59326);
+    CHECK(sender.send(hex("AA 55 00 02 00 64"), err)); // AA55: 阀位=100
+    CHECK(sender.send(hex("AA 56 00 02 01 00"), err)); // AA56: 转速=256
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t1 = makeTag("阀位", st.fields[0].address, TagDataType::UInt16, 1.0);
+    Tag t2 = makeTag("转速", st.fields[1].address, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t1, &t2};
+    auto results = src.readTags(tags);
+    int64_t v1 = 0, v2 = 0;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) v1 = *i;
+    if (auto* d = std::get_if<double>(&results[0].value)) v1 = (int64_t)*d;
+    if (auto* i = std::get_if<int64_t>(&results[1].value)) v2 = *i;
+    if (auto* d = std::get_if<double>(&results[1].value)) v2 = (int64_t)*d;
+    CHECK(results[0].ok);
+    CHECK(results[1].ok);
+    CHECK(v1 == 100); // AA55 帧驱动 阀位
+    CHECK(v2 == 256); // AA56 帧驱动 转速（不再被 AA55 帧污染）
+
+    // 隐式标签按运行时槽位合成：协议A/协议B 的字段0 不得共享同一标签
+    //（回归：此前两协议字段0都按协议内序号=0 合成，AA55 帧两张卡都显示阀位值）
+    {
+        Project p2 = p; // 结构拷贝
+        Component la = ComponentRegistry::createComponent("Label", "la");
+        la.setProp("bindField", std::string("协议A/阀位"));
+        p2.pages[0].components.push_back(la);
+        Component lb = ComponentRegistry::createComponent("Label", "lb");
+        lb.setProp("bindField", std::string("协议B/转速"));
+        p2.pages[0].components.push_back(lb);
+        synthesizeImplicitBindings(p2);
+        const Tag* ta = p2.tags.find("阀位");
+        const Tag* tb = p2.tags.find("转速");
+        REQUIRE(ta != nullptr);
+        REQUIRE(tb != nullptr);
+        CHECK(ta->address == 0);
+        CHECK(tb->address == 1);      // 组内重排槽位，不再是两协议共用的 0
+        CHECK(ta != tb);
+        // 两张卡绑定不同标签（此前转速卡会复用槽位 0 的「阀位」标签）
+        int distinct = 0;
+        for (const auto& a : p2.associations)
+            if (auto* b = std::get_if<DataBinding>(&a); b && b->tag == "转速") ++distinct;
+        CHECK(distinct == 1);
+    }
+
+    // 帧计数按帧头归属分组：AA55 协议只计 AA55 帧，AA56 协议只计 AA56 帧
+    {
+        auto byIdx = src.matchedFrameCountByIndex();
+        CHECK(byIdx[0] == 1); // AA55：已发 1 帧
+        CHECK(byIdx[1] == 1); // AA56：已发 1 帧
+    }
+
+    // 再发 AA55 帧改变阀位，转速必须保持不变（隔离）
+    CHECK(sender.send(hex("AA 55 00 02 00 C8"), err)); // 阀位=200
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    results = src.readTags(tags);
+    v1 = 0; v2 = 0;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) v1 = *i;
+    if (auto* d = std::get_if<double>(&results[0].value)) v1 = (int64_t)*d;
+    if (auto* i = std::get_if<int64_t>(&results[1].value)) v2 = *i;
+    if (auto* d = std::get_if<double>(&results[1].value)) v2 = (int64_t)*d;
+    CHECK(v1 == 200);
+    CHECK(v2 == 256); // 隔离：AA55 帧不影响 AA56 协议字段
+
+    // 帧计数隔离：AA55 计 2，AA56 仍为 1
+    {
+        auto byIdx = src.matchedFrameCountByIndex();
+        CHECK(byIdx[0] == 2);
+        CHECK(byIdx[1] == 1); // AA56 协议卡计数不被 AA55 帧推动
+    }
+
+    sender.stop();
+    src.disconnect();
+}
+
 TEST_CASE("测试帧生成：TLV 逐字段成帧且可拆回") {
     packet::FramingConfig fr; // 默认 TLV：T1B L2B 大端
     std::vector<TagField> fields;

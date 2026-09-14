@@ -20,12 +20,14 @@ class Page;
 //   帧头+Length 模式：tagId 忽略，offset 相对整帧首。
 struct TagField {
     std::string name = "字段";               // 字段名（展示用）
+    std::string protoName;                   // 来源协议配置名（协议组合并后追溯字段归属）
     int tagId = 0;                           // TLV 槽位标识（帧 T 值）
     int offset = 0;                          // 字节偏移（含义见上）
     packet::FieldType type = packet::FieldType::U16; // 字段类型
     int bytes = 2;                           // 固定类型由类型决定；string/enum 由长度属性
     bool bigEndian = true;                   // 多字节字节序
     int address = 0;                         // 标签槽位（Tag::address）
+    int framingIndex = 0;                    // 所属拆帧配置索引（协议组多帧头：字段归属哪条协议）
     double scale = 1.0;                      // 数值字段工程换算：工程值 = 原始值 * scale（bool/string/enum 不适用）
     std::vector<std::pair<int64_t, std::string>> enums; // Enum：值 → 名称
 };
@@ -66,7 +68,10 @@ struct FrameSourceSettings {
     std::string parity = "无";       // 校验：无 / 奇 / 偶
     int stopBits = 1;                // 停止位 1 / 2
 
-    packet::FramingConfig framing;   // 仅 TCP 生效；UDP 天然成帧
+    packet::FramingConfig framing;   // 主拆帧配置（首个成员/单协议）；仅 TCP 生效，UDP 天然成帧
+    // 协议组多帧头：各成员的拆帧配置（帧头+Length 不同帧头时各成一条；TLV/单一配置为空）。
+    // 运行时逐帧头匹配拆帧，字段按 framingIndex 只由命中帧头的协议解析
+    std::vector<packet::FramingConfig> framings;
 
     std::vector<TagField> fields;
     std::string sourceName;                 // 生效数据源组件名（供数据目的按名称关联）

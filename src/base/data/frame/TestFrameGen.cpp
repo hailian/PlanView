@@ -133,4 +133,27 @@ std::vector<std::vector<uint8_t>> generateTestFrames(const packet::FramingConfig
     return out;
 }
 
+// 多帧头重载：每组配置对各自归属的字段生成（TLV 组走单配置语义，不影响）
+std::vector<std::vector<uint8_t>> generateTestFrames(
+    const std::vector<packet::FramingConfig>& framings, const std::vector<TagField>& fields,
+    int count, uint32_t seed) {
+    std::vector<std::vector<uint8_t>> out;
+    if (framings.empty() || fields.empty() || count <= 0) return out;
+    std::mt19937 rng(seed ? seed : std::random_device{}());
+    for (int i = 0; i < count; ++i) {
+        for (size_t k = 0; k < framings.size(); ++k) {
+            std::vector<TagField> group;
+            for (const auto& f : fields)
+                if ((size_t)f.framingIndex == k) group.push_back(f);
+            if (group.empty()) continue;
+            if (framings[k].mode == packet::FrameMode::Tlv) {
+                for (const auto& f : group) out.push_back(encodeTlvFrame(framings[k], f, rng));
+            } else {
+                out.push_back(encodeHeaderLenFrame(framings[k], group, rng));
+            }
+        }
+    }
+    return out;
+}
+
 } // namespace softg

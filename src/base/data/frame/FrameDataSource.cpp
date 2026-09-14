@@ -101,7 +101,13 @@ FrameDataSource::~FrameDataSource() { disconnect(); }
 
 bool FrameDataSource::connect(std::string& err) {
     disconnect();
-    splitter_.setConfig(cfg_.framing);
+    // 协议组多帧头：拆帧器按各帧头匹配；否则单配置
+    framings_ = cfg_.framings;
+    if (framings_.empty()) framings_.push_back(cfg_.framing);
+    if (cfg_.framings.size() > 1)
+        splitter_.setConfigs(cfg_.framings);
+    else
+        splitter_.setConfig(cfg_.framing);
     if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
         return serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
                             cfg_.stopBits, err);
@@ -160,16 +166,28 @@ void FrameDataSource::pumpFrames() {
 
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& frame : frames) {
-        // 结构解析：TLV 模式按 T 匹配字段、偏移相对负载；帧头+Length 相对整帧
+        // 结构解析：TLV 模式按 T 匹配字段、偏移相对负载；帧头+Length 相对整帧。
+        // 多帧头（协议组）时逐配置试解，命中者决定哪些协议的字段参与——
+        // AA55 帧只驱动 AA55 协议的字段，AA56 帧只驱动 AA56 协议的字段
         int64_t tagId = -1;
         const uint8_t* payload = nullptr;
         int payloadLen = 0;
-        bool structured = packet::decodeFrameOnce(cfg_.framing, frame, tagId, payload, payloadLen);
+        int matchedIdx = 0;
+        bool structured = false;
+        for (size_t k = 0; k < framings_.size(); ++k) {
+            if (packet::decodeFrameOnce(framings_[k], frame, tagId, payload, payloadLen)) {
+                structured = true;
+                matchedIdx = (int)k;
+                break;
+            }
+        }
         bool matched = false; // 符合协议：成帧且至少一个字段可解出
         if (structured) {
             for (const auto& f : cfg_.fields) {
                 if (cfg_.framing.mode == packet::FrameMode::Tlv && f.tagId != tagId)
                     continue; // TLV：字段按槽位标识匹配帧
+                if (cfg_.framings.size() > 1 && f.framingIndex != matchedIdx)
+                    continue; // 多帧头：字段只由其归属协议的帧驱动
                 TagValue val;
                 if (fieldValue(f, payload, payloadLen, val)) {
                     latestValue_[f.address] = std::move(val); // 同槽位多字段：后到者覆盖
@@ -178,7 +196,10 @@ void FrameDataSource::pumpFrames() {
             }
         }
         lastFrameTime_ = nowTimeText(); // 统计与日志共用同一接收时刻
-        if (matched) ++matchedFrames_;
+        if (matched) {
+            ++matchedFrames_;
+            ++matchedByIdx_[matchedIdx]; // 各帧头归属分别计数（协议卡显示自己的）
+        }
         FrameLogEntry e;
         e.timeText = lastFrameTime_;
         e.data = std::move(frame);
@@ -251,6 +272,11 @@ std::string FrameDataSource::lastFrameTimeText() const {
 uint64_t FrameDataSource::matchedFrameCount() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return matchedFrames_;
+}
+
+std::map<int, uint64_t> FrameDataSource::matchedFrameCountByIndex() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return matchedByIdx_;
 }
 
 } // namespace softg

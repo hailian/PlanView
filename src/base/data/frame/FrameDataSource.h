@@ -45,6 +45,8 @@ public:
     // 运行统计（画布卡片显示；线程安全）
     std::string lastFrameTimeText() const; // 最后一帧接收时间 HH:MM:SS（空 = 未收到）
     uint64_t matchedFrameCount() const;    // 符合协议的帧计数（成帧且命中至少一字段）
+    // 按拆帧配置索引分组的计数（协议组多帧头：各协议卡只显示自己帧头的命中数）
+    std::map<int, uint64_t> matchedFrameCountByIndex() const;
 
 private:
     void pumpFrames();  // 收包队列 → 拆帧 → 规约解析 → 缓存 + 日志（worker 线程调用）
@@ -54,12 +56,15 @@ private:
     packet::TcpLink tcp_;
     packet::SerialLink serial_; // 串口字节流：与 TCP 共用拆帧路径
     packet::FrameSplitter splitter_{cfg_.framing};
+    // 协议组多帧头（含单配置回退）；命中索引供字段归属过滤
+    std::vector<packet::FramingConfig> framings_;
 
     mutable std::mutex mutex_; // 统计 getter 为 const 读
     std::map<int, TagValue> latestValue_;     // 标签槽位 → 最新解析值（数值/布尔/文本）
     std::deque<FrameLogEntry> frameLog_;
     std::string lastFrameTime_;               // 最后一帧接收时间（HH:MM:SS）
     uint64_t matchedFrames_ = 0;              // 符合协议的帧计数（成帧且命中至少一字段）
+    std::map<int, uint64_t> matchedByIdx_;    // 同上，按 framingIndex 分组（协议组）
 };
 
 } // namespace softg

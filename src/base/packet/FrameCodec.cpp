@@ -29,6 +29,13 @@ void FrameSplitter::setConfig(const FramingConfig& config) {
     if (config.mode != cfg_.mode || config.header != cfg_.header)
         buf_.clear(); // 帧结构变化后旧缓冲不再可信
     cfg_ = config;
+    cfgs_.clear(); // 回到单配置模式
+}
+
+void FrameSplitter::setConfigs(const std::vector<FramingConfig>& configs) {
+    buf_.clear();
+    cfgs_ = configs;
+    if (!cfgs_.empty()) cfg_ = cfgs_.front(); // 主配置 = 首条（报文监视等兼容读）
 }
 
 void FrameSplitter::feed(const uint8_t* data, size_t len,
@@ -37,7 +44,9 @@ void FrameSplitter::feed(const uint8_t* data, size_t len,
     while (tryExtract(out)) {
     }
     // 缓冲上限保护：防止失步且无法同步时无限增长
-    size_t cap = (size_t)cfg_.maxFrameLen * 2 + 1024;
+    int maxLen = cfg_.maxFrameLen;
+    for (const auto& c : cfgs_) maxLen = std::max(maxLen, c.maxFrameLen);
+    size_t cap = (size_t)maxLen * 2 + 1024;
     if (buf_.size() > cap)
         buf_.erase(buf_.begin(), buf_.end() - cap);
 }
@@ -69,6 +78,32 @@ size_t FrameSplitter::resync() {
 }
 
 bool FrameSplitter::tryExtract(std::vector<std::vector<uint8_t>>& out) {
+    // ---- 多帧头（协议组）：从头部逐帧头匹配，命中者按其 length 语义取帧 ----
+    if (!cfgs_.empty()) {
+        if (buf_.empty()) return false;
+        for (const auto& cfg : cfgs_) {
+            if (!startsWith(buf_, 0, cfg.header)) continue;
+            const int lenFieldEnd = cfg.lenOffset + cfg.lenBytesHeader;
+            if (cfg.lenOffset < 0 || cfg.lenBytesHeader < 1 || cfg.lenBytesHeader > 4 ||
+                cfg.lenOffset > (int)cfg.header.size())
+                continue; // 该配置非法，试下一个
+            if (buf_.size() < (size_t)lenFieldEnd) return false; // 帧头命中，等长度字段
+            uint64_t len = readUint(buf_.data() + cfg.lenOffset, cfg.lenBytesHeader,
+                                    cfg.bigEndianHeader);
+            uint64_t total = cfg.lenIncludesAll ? len : (uint64_t)lenFieldEnd + len;
+            if (total < (uint64_t)lenFieldEnd || total > (uint64_t)cfg.maxFrameLen) {
+                resyncMulti(); // 长度非法：按失步处理
+                return true;
+            }
+            if (buf_.size() < total) return false; // 不完整，等更多数据
+            out.emplace_back(buf_.begin(), buf_.begin() + (int)total);
+            buf_.erase(buf_.begin(), buf_.begin() + (int)total);
+            return true;
+        }
+        size_t discarded = resyncMulti(); // 无帧头命中
+        return discarded > 0;
+    }
+
     if (cfg_.mode == FrameMode::Tlv) {
         int head = cfg_.tagBytes + cfg_.lenBytes;
         if (cfg_.tagBytes < 1 || cfg_.tagBytes > 4 || cfg_.lenBytes < 1 || cfg_.lenBytes > 4)
@@ -116,6 +151,36 @@ bool FrameSplitter::tryExtract(std::vector<std::vector<uint8_t>>& out) {
     out.emplace_back(buf_.begin(), buf_.begin() + (int)total);
     buf_.erase(buf_.begin(), buf_.begin() + (int)total);
     return true;
+}
+
+// 多帧头重同步：向后找最近一个任意帧头的完整出现位置；
+// 找不到则保留可能构成某帧头前缀的最长尾部
+size_t FrameSplitter::resyncMulti() {
+    for (size_t i = 1; i < buf_.size(); ++i) {
+        for (const auto& cfg : cfgs_) {
+            if (cfg.header.empty()) continue;
+            if (startsWith(buf_, i, cfg.header)) {
+                buf_.erase(buf_.begin(), buf_.begin() + i);
+                return i;
+            }
+        }
+    }
+    size_t maxKeep = 0;
+    for (const auto& cfg : cfgs_) {
+        if (cfg.header.empty()) continue;
+        size_t keep = std::min(buf_.size(), cfg.header.size() - 1);
+        for (; keep >= 1 && keep > maxKeep; --keep) {
+            if (std::equal(buf_.end() - keep, buf_.end(), cfg.header.begin()))
+                maxKeep = std::max(maxKeep, keep);
+        }
+    }
+    if (maxKeep == 0) {
+        buf_.clear();
+        return 1;
+    }
+    size_t discard = buf_.size() - maxKeep;
+    buf_.erase(buf_.begin(), buf_.end() - maxKeep);
+    return discard == 0 ? 1 : discard; // 保证有进展（不会死循环）
 }
 
 bool decodeFrameOnce(const FramingConfig& cfg, const std::vector<uint8_t>& frame,

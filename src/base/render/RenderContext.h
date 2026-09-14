@@ -4,6 +4,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <map>
+#include <string>
 #include <string_view>
 
 #include "base/model/Component.h"
@@ -69,10 +71,11 @@ struct RenderContext {
     TextureCache* textures = nullptr;  // Image 组件用; 两 app 各自持有
 
     // 通信组件运行统计（Runtime 由 PageViewer 填充；设计器为默认值不显示）：
-    // 数据源卡显示最后一帧接收时间；协议配置卡显示符合协议的帧计数
+    // 数据源卡显示最后一帧接收时间；协议配置卡按协议名查自己的帧计数
+    //（协议组多帧头：各协议只统计命中自己帧头的帧；不在表中的协议不显示计数）
     bool commStatsValid = false;
-    std::string_view dsLastFrameTime;   // "HH:MM:SS"，空串 = 尚未收到
-    uint64_t protoMatchedFrames = 0;
+    std::string_view dsLastFrameTime;          // "HH:MM:SS"，空串 = 尚未收到
+    const std::map<std::string, uint64_t>* protoFrameCounts = nullptr; // 协议名 -> 帧计数
 
     // 0..1 方波闪烁相位（1Hz）
     float flashPhase() const {

@@ -266,11 +266,19 @@ void ViewerApp::drawPage(ImDrawList* dl, const Page& page) {
     ctx.chartSeries = &engine_;
     ctx.alarms = &engine_;
     ctx.textures = &textures_;
-    if (worker_.isFrameSource()) { // 通信统计：末帧时间 / 符合协议帧计数
+    if (worker_.isFrameSource()) { // 通信统计：末帧时间 / 各协议自己的帧计数
         ctx.commStatsValid = true;
         dsLastFrameTimeCache_ = worker_.lastFrameTimeText();
         ctx.dsLastFrameTime = dsLastFrameTimeCache_;
-        ctx.protoMatchedFrames = worker_.matchedFrameCount();
+        // 协议名 -> 该协议帧头归属的命中数（协议组各成员独立；未引用协议不进表）
+        auto byIdx = worker_.matchedFrameCountByIndex();
+        protoFrameCounts_.clear();
+        for (const auto& f : project_.settings.frame.fields)
+            if (!f.protoName.empty()) {
+                auto it = byIdx.find(f.framingIndex);
+                if (it != byIdx.end()) protoFrameCounts_[f.protoName] = it->second;
+            }
+        ctx.protoFrameCounts = &protoFrameCounts_;
     }
     for (const auto& c : page.components)
         ComponentRenderer::drawComponent(dl, c, ctx, viewOffset_, viewZoom_);
@@ -490,12 +498,29 @@ void ViewerApp::drawFrameMonitor() {
         int64_t tagId = -1;
         const uint8_t* payload = nullptr;
         int payloadLen = 0;
-        bool structured = packet::decodeFrameOnce(project_.settings.frame.framing, e.data,
-                                                  tagId, payload, payloadLen);
+        // 多帧头（协议组）逐配置试解，命中者决定字段归属
+        const auto& frAll = project_.settings.frame;
+        int matchedIdx = 0;
+        bool structured = false;
+        packet::FrameMode mode = frAll.framing.mode;
+        if (frAll.framings.size() > 1) {
+            for (size_t k = 0; k < frAll.framings.size(); ++k)
+                if (packet::decodeFrameOnce(frAll.framings[k], e.data, tagId, payload,
+                                            payloadLen)) {
+                    structured = true;
+                    matchedIdx = (int)k;
+                    mode = frAll.framings[k].mode;
+                    break;
+                }
+        } else {
+            structured = packet::decodeFrameOnce(frAll.framing, e.data, tagId, payload,
+                                                  payloadLen);
+        }
         if (structured) {
             for (const auto& tf : project_.settings.frame.fields) {
-                if (project_.settings.frame.framing.mode == packet::FrameMode::Tlv &&
-                    tf.tagId != tagId)
+                if (mode == packet::FrameMode::Tlv && tf.tagId != tagId)
+                    continue;
+                if (frAll.framings.size() > 1 && tf.framingIndex != matchedIdx)
                     continue;
                 packet::PacketField f;
                 f.name = tf.name + " (@" + std::to_string(tf.tagId) + ")";
@@ -553,8 +578,10 @@ void ViewerApp::drawTestGen() {
     ImGui::SameLine();
     float s = shell_.dpiScale();
     if (ImGui::Button("生成", ImVec2(80 * s, 0))) {
-        // 每帧一行 HEX（真实换行），复制/保存即用
-        auto frames = generateTestFrames(fr.framing, fr.fields, genFrameCount_);
+        // 每帧一行 HEX（真实换行），复制/保存即用；多帧头（协议组）按配置分组生成
+        auto frames = fr.framings.size() > 1
+                          ? generateTestFrames(fr.framings, fr.fields, genFrameCount_)
+                          : generateTestFrames(fr.framing, fr.fields, genFrameCount_);
         testHex_.clear();
         for (const auto& f : frames) {
             testHex_ += packet::bytesToHex(f);

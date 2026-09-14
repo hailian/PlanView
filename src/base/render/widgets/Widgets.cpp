@@ -672,13 +672,16 @@ void drawProtocolConfig(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::snprintf(line, sizeof(line), "%lld 字段", (long long)fieldCount);
     dl->AddText(font(), 12.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 50.0f * scale),
                 IM_COL32(120, 132, 152, 255), line);
-    // 运行态：符合协议的帧计数（成帧且命中至少一字段；设计器不显示）
-    if (ctx.commStatsValid) {
-        std::snprintf(line, sizeof(line), "帧计数: %llu",
-                      (unsigned long long)ctx.protoMatchedFrames);
-        dl->AddText(font(), 11.0f * scale,
-                    ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 68.0f * scale),
-                    IM_COL32(150, 165, 185, 255), line);
+    // 运行态：符合本协议的帧计数（按协议名查；未被数据源使用的协议不显示）
+    if (ctx.commStatsValid && ctx.protoFrameCounts) {
+        auto it = ctx.protoFrameCounts->find(c.name);
+        if (it != ctx.protoFrameCounts->end()) {
+            std::snprintf(line, sizeof(line), "帧计数: %llu",
+                          (unsigned long long)it->second);
+            dl->AddText(font(), 11.0f * scale,
+                        ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 68.0f * scale),
+                        IM_COL32(150, 165, 185, 255), line);
+        }
     }
 }
 

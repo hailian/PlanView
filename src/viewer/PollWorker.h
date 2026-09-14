@@ -46,7 +46,9 @@ public:
 
     // 通信统计（UI 每帧拉取，画布卡片显示；帧数据源专用）
     std::string lastFrameTimeText();     // 最后一帧接收时间（空 = 未收到）
-    uint64_t matchedFrameCount();        // 符合协议的帧计数
+    uint64_t matchedFrameCount();        // 符合协议的帧计数（总）
+    // 按拆帧配置索引分组的计数（协议组：协议卡只显示自己帧头的命中数）
+    std::map<int, uint64_t> matchedFrameCountByIndex();
 
 private:
     void run();
@@ -82,6 +84,7 @@ private:
     std::atomic<uint64_t> matchedFrames_{0};  // 统计快照（run 循环刷新）
     std::mutex statM_;
     std::string lastFrameTime_;
+    std::map<int, uint64_t> matchedByIdx_;
 };
 
 } // namespace softg::viewer

@@ -47,6 +47,7 @@ private:
     ImVec2 viewOffset_ = ImVec2(40, 40);
     float viewZoom_ = 0.0f;
     std::string dsLastFrameTimeCache_; // RenderContext.string_view 的宿主（每帧刷新）
+    std::map<std::string, uint64_t> protoFrameCounts_; // 协议名 -> 帧计数（组内各协议独立）
 
     ImVec2 toScreen(ImVec2 page) const {
         return ImVec2(page.x * viewZoom_ + viewOffset_.x, page.y * viewZoom_ + viewOffset_.y);

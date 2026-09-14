@@ -54,6 +54,7 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
         std::string prefix = "f" + std::to_string(i) + ".";
         TagField f;
         f.name = props::asString(c.propOr(prefix + "name", std::string("字段")));
+        f.protoName = c.name; // 字段归属的协议（隐式标签按运行时槽位合成时追溯）
         f.tagId = (int)props::asInt(c.propOr(prefix + "tagId", int64_t(0))); // 缺省 0，不自增
         f.offset = (int)props::asInt(c.propOr(prefix + "offset", int64_t(0)));
         std::string typeName = props::asString(c.propOr(prefix + "type", std::string("u16")));
@@ -174,16 +175,39 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     packet::FramingConfig framing;
     std::vector<TagField> fields;
     if (!groupProtos.empty()) {
+        std::vector<packet::FramingConfig> configs; // 去重后的拆帧配置（索引即 framingIndex）
+        auto sameConfig = [](const packet::FramingConfig& a, const packet::FramingConfig& b) {
+            return a.mode == b.mode && a.header == b.header &&
+                   a.lenOffset == b.lenOffset && a.lenBytesHeader == b.lenBytesHeader &&
+                   a.bigEndianHeader == b.bigEndianHeader && a.lenIncludesAll == b.lenIncludesAll &&
+                   a.tagBytes == b.tagBytes && a.lenBytes == b.lenBytes &&
+                   a.bigEndian == b.bigEndian && a.lenIncludesHeader == b.lenIncludesHeader;
+        };
         for (size_t i = 0; i < groupProtos.size(); ++i) {
             packet::FramingConfig f;
             std::vector<TagField> fs;
             protocolFramingFromComponent(*groupProtos[i], f, fs);
-            if (i == 0) framing = f; // 拆帧参数取第一个成员
+            if (i == 0) framing = f; // 主拆帧配置取第一个成员
+            int idx = 0;
+            bool dup = false;
+            for (size_t k = 0; k < configs.size(); ++k)
+                if (sameConfig(configs[k], f)) {
+                    idx = (int)k; // 同拆帧参数（含同帧头）的成员共用一条配置
+                    dup = true;
+                    break;
+                }
+            if (!dup) {
+                idx = (int)configs.size();
+                configs.push_back(f);
+            }
+            for (auto& tf : fs) tf.framingIndex = idx; // 字段归属其协议的拆帧配置
             fields.insert(fields.end(), std::make_move_iterator(fs.begin()),
                           std::make_move_iterator(fs.end()));
         }
         // 隐式标签槽位按合并后序号重排（协议内序号会跨协议冲突）
         for (size_t i = 0; i < fields.size(); ++i) fields[i].address = (int)i;
+        // 多条不同配置才需要多帧头匹配（帧头+Length 不同帧头；TLV 组成员本就同配置）
+        if (configs.size() > 1) s.framings = std::move(configs);
     } else if (proto) {
         protocolFramingFromComponent(*proto, framing, fields);
     }
@@ -264,6 +288,16 @@ std::vector<ComponentId> generateFieldComponents(Page& page, Project& proj,
 }
 
 void synthesizeImplicitBindings(Project& p) {
+    // 运行时（生效数据源）的合并字段表决定隐式标签槽位——协议组会把组内字段重排，
+    // 若按各协议内部序号合成，两个协议的字段0会共享同一槽位标签，AA55 帧便会
+    // 同时驱动两个协议的显示组件
+    std::map<std::pair<std::string, std::string>, int> effAddr; // (协议名,字段名)->槽位
+    {
+        FrameSourceSettings eff = frameSettingsFromProject(p);
+        for (const auto& f : eff.fields)
+            effAddr[{f.protoName, f.name}] = f.address;
+    }
+
     // 协议名 -> 字段表（拷贝，避免悬垂）
     std::map<std::string, std::vector<TagField>> protoFields;
     for (const auto& pg : p.pages)
@@ -292,10 +326,15 @@ void synthesizeImplicitBindings(Project& p) {
                 }
             if (!f) continue;
 
+            // 隐式标签槽位以运行时为准（协议组重排后）；未生效的协议回退协议内序号
+            int addr = f->address;
+            auto ea = effAddr.find({protoName, fieldName});
+            if (ea != effAddr.end()) addr = ea->second;
+
             // 隐式标签：同槽位复用；否则按字段创建（名字唯一化）
             Tag* t = nullptr;
             for (auto& tag : p.tags.all())
-                if (tag.address == f->address) {
+                if (tag.address == addr) {
                     t = &tag;
                     break;
                 }
@@ -304,7 +343,7 @@ void synthesizeImplicitBindings(Project& p) {
                 nt.name = f->name;
                 while (p.tags.find(nt.name))
                     nt.name = f->name + "@" + std::to_string(f->address); // 重名加槽位后缀
-                nt.address = f->address;
+                nt.address = addr;
                 switch (f->type) {
                 case packet::FieldType::I8: case packet::FieldType::I16:
                     nt.type = TagDataType::Int16; break;
@@ -325,7 +364,7 @@ void synthesizeImplicitBindings(Project& p) {
                 std::string err;
                 p.tags.add(std::move(nt), err);
                 for (auto& tag : p.tags.all())
-                    if (tag.address == f->address) t = &tag;
+                    if (tag.address == addr) t = &tag;
             }
             if (!t) continue;
 
