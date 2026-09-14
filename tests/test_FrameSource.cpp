@@ -427,6 +427,80 @@ TEST_CASE("测试帧生成：帧头+Length 一帧含全部字段") {
     CHECK(out.size() == 4);
 }
 
+TEST_CASE("监听数据源：三元组过滤（反向命中，未命中丢弃）") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    p.pages.push_back(std::move(pg));
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.setProp("autoStart", true);
+    ds.setProp("transport", std::string("监听"));
+    ds.setProp("listenIp", std::string("127.0.0.1"));
+    ds.setProp("listenPort", int64_t(59342));
+    ds.setProp("listenProto", std::string("UDP"));
+    p.pages[0].components.push_back(ds);
+
+    FrameSourceSettings st = frameSettingsFromProject(p);
+    CHECK(st.enabled);
+    CHECK(st.listen);
+    CHECK(st.listenIp == "127.0.0.1");
+    CHECK(st.listenPort == 59342);
+    CHECK(!st.listenTcp);
+
+    // 链路层过滤单测：绑定 59343，命中源 = (127.0.0.1, 59342)
+    packet::UdpLink ln;
+    std::string err;
+    REQUIRE(ln.start(59343, err, "127.0.0.1", 59342));
+    packet::UdpLink dev;
+    CHECK(dev.start(59342, err)); // 设备固定端口 59342
+    dev.setRemote("127.0.0.1", 59343);
+    packet::UdpLink stranger;
+    CHECK(stranger.start(0, err)); // 任意临时端口
+    stranger.setRemote("127.0.0.1", 59343);
+    CHECK(dev.send(hex("01 00 02 00 64"), err));     // 命中
+    CHECK(stranger.send(hex("01 00 02 00 FF"), err)); // 未命中：丢弃
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    std::deque<packet::UdpPacket> in;
+    ln.drain(in);
+    CHECK(in.size() == 1); // 只收到命中包
+    if (!in.empty())
+        CHECK(packet::bytesToHex(in.front().data) == "01 00 02 00 64");
+    ln.stop();
+    dev.stop();
+    stranger.stop();
+
+    // 数据源接线：dip="*"（正向全收），绑定即 dport。
+    // 不再手工置 udp——监听(UDP)应自行走 UDP 收包路径
+    p.pages[0].components[0].setProp("listenIp", std::string("*"));
+    FrameSourceSettings st2 = frameSettingsFromProject(p);
+    st2.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "值";
+    f.tagId = 1;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    st2.fields.push_back(f);
+    FrameDataSource src(st2);
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59342 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink any;
+    CHECK(any.start(0, err));
+    any.setRemote("127.0.0.1", 59342); // 发往 dport（= 绑定端口）
+    CHECK(any.send(hex("01 00 02 00 64"), err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    Tag t = makeTag("值", 0, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t};
+    auto results = src.readTags(tags);
+    CHECK(results[0].ok);
+    int64_t v = 0;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) v = *i;
+    if (auto* d = std::get_if<double>(&results[0].value)) v = (int64_t)*d;
+    CHECK(v == 100);
+    any.stop();
+    src.disconnect();
+}
 TEST_CASE("数据目的：工程级合成（source 按名称关联数据源）") {
     Project p;
     Page pg;

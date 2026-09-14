@@ -76,7 +76,8 @@ bool TcpLink::connect(const std::string& host, int port, std::string& err) {
     return true;
 }
 
-bool TcpLink::listen(int port, std::string& err) {
+bool TcpLink::listen(int port, std::string& err, const std::string& filterIp) {
+    filterIp_ = filterIp.empty() ? "*" : filterIp;
     disconnect();
 
     WSADATA wsa;
@@ -196,8 +197,17 @@ void TcpLink::acceptLoop() {
         timeval tv{0, 300 * 1000};
         int rc = ::select(0, &r, nullptr, nullptr, &tv);
         if (rc <= 0) continue; // 超时/出错：回到循环检查退出标志
-        SOCKET c = ::accept((SOCKET)listenSock_, nullptr, nullptr);
+        sockaddr_in peer{};
+        int peerLen = sizeof(peer);
+        SOCKET c = ::accept((SOCKET)listenSock_, (sockaddr*)&peer, &peerLen);
         if (c == INVALID_SOCKET) continue;
+        char peerIp[64];
+        ::inet_ntop(AF_INET, &peer.sin_addr, peerIp, sizeof(peerIp));
+        if (filterIp_ != "*" && filterIp_ != peerIp) { // 三元组对端过滤：未命中拒接
+            SOFTG_LOG_INFO("TCP 接入被过滤拒绝: %s", peerIp);
+            ::closesocket(c);
+            continue;
+        }
         DWORD tvr = 300; // 收包轮询超时，便于线程检查退出标志
         ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tvr, sizeof(tvr));
         sock_ = (uintptr_t)c;

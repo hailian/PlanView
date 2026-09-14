@@ -784,14 +784,18 @@ void drawInspector(PlannerContext& ctx) {
             c->propOr("transport", std::string(isSink ? "TCP" : "UDP")));
         bool dsTcp = dsTransport == "TCP";
         bool dsSerial = dsTransport == "串口";
+        // 监听：固定三元组 dip/dport/协议，绑定端口即 dport——无独立本地监听端口
+        bool dsListen = dsTransport == "监听";
         bool dsUdpClient =
-            !dsTcp && !dsSerial &&
+            !dsListen && !dsTcp && !dsSerial &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
         bool dsTcpServer =
-            dsTcp && props::asString(c->propOr("tcpRole", std::string("客户端"))) == "服务端";
-        // 目标(host/remotePort) 仅客户端使用；本地端口(localPort) 仅服务端使用
+            !dsListen && dsTcp &&
+            props::asString(c->propOr("tcpRole", std::string("客户端"))) == "服务端";
+        // 目标(host/remotePort) 仅客户端使用；本地端口(localPort) 仅服务端使用（监听无此项）
         bool dsUseTarget = dsTcp ? !dsTcpServer : dsUdpClient;
-        bool dsUseLocalPort = dsTcp ? dsTcpServer : (!dsUdpClient && !dsSerial);
+        bool dsUseLocalPort =
+            !dsListen && (dsTcp ? dsTcpServer : (!dsUdpClient && !dsSerial));
         bool protoTlv =
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
@@ -801,14 +805,19 @@ void drawInspector(PlannerContext& ctx) {
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
                 // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
-                if (spec.key == "udpRole" && (dsTcp || dsSerial)) continue;  // 仅 UDP
-                if (spec.key == "tcpRole" && (!dsTcp || dsSerial)) continue; // 仅 TCP
+                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsListen)) continue;
+                if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsListen)) continue;
                 if ((spec.key == "host" || spec.key == "remotePort") && !dsUseTarget) continue;
                 if (spec.key == "localPort" && !dsUseLocalPort) continue;
                 bool serialItem = spec.key == "serialPort" || spec.key == "baud" ||
                                   spec.key == "dataBits" || spec.key == "parity" ||
                                   spec.key == "stopBits";
                 if (serialItem && !dsSerial) continue; // 仅串口
+                bool listenItem = spec.key == "listenIp" || spec.key == "listenPort" ||
+                                  spec.key == "listenProto";
+                if (listenItem && !dsListen) continue; // 仅监听（三元组）
+                // 监听下其余传输项已由上面的 dsListen/dsUseTarget/dsUseLocalPort 规则排除，
+                // autoStart/transport 照常显示
             }
             if (isProto) { // 拆帧项按模式互斥显示，避免误配
                 bool tlvItem = spec.key == "tagBytes" || spec.key == "lenBytes" ||

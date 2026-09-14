@@ -61,6 +61,14 @@ struct FrameSourceSettings {
     int remotePort = 9001;           // TCP 客户端远端端口 / UDP 客户端目标端口
     int localPort = 9001;            // TCP 服务端监听端口 / UDP 服务端本地绑定端口
 
+    // 仅监听（固定三元组 dip/dport/协议 过滤；绑定端口即 dport，无独立本地端口）：
+    //   UDP：绑定 dport，命中 = 源==(dip,dport)（反向）或 dip="*"（正向全收）
+    //   TCP：监听 dport，仅接受对端 IP==dip 的连接（连接内双向都解析）
+    bool listen = false;
+    std::string listenIp = "*";      // dip（"*" 通配任意 IP）
+    int listenPort = 9002;           // dport（UDP 反向匹配的源端口）
+    bool listenTcp = false;          // 协议：false=UDP / true=TCP
+
     // 仅串口
     std::string serialPort = "COM1"; // 串口名（"COM3" 或数字 "3"）
     int baud = 9600;                 // 波特率

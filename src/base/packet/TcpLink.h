@@ -26,8 +26,10 @@ public:
 
     // 客户端：连接远端（500ms 连接超时）；成功后启动收包线程
     bool connect(const std::string& host, int port, std::string& err);
-    // 服务端：监听本地端口，等待设备接入（单连接；断开后自动回到监听）
-    bool listen(int port, std::string& err);
+    // 服务端：监听本地端口，等待设备接入（单连接；断开后自动回到监听）。
+    // 监听过滤（可选）：filterIp=="*" 收任意对端，否则只接受对端 IP 匹配的连接
+    //（连接内双向字节流都进入解析——TCP 正反向命中）
+    bool listen(int port, std::string& err, const std::string& filterIp = "*");
     void disconnect();
     // 监听中即视为已接入（避免消费方反复重连）
     bool isConnected() const { return connected_ || listening_; }
@@ -47,6 +49,7 @@ private:
 
     uintptr_t sock_ = (uintptr_t)-1;       // SOCKET（当前连接）
     uintptr_t listenSock_ = (uintptr_t)-1; // SOCKET（监听，仅服务端）
+    std::string filterIp_ = "*";            // 监听过滤：对端 IP（"*" 通配）
     std::atomic<bool> connected_{false};
     std::atomic<bool> listening_{false};   // 服务端监听中
     std::thread thread_;

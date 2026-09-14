@@ -146,7 +146,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
             specBool("autoStart", "自动启动", false),
-            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口"}),
+            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听"}),
             // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端
             specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端"}),
             // TCP 角色：客户端=连接远端；服务端=监听本地端口等待设备接入
@@ -154,6 +154,10 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specString("host", "主机/目标IP", "127.0.0.1"),
             specInt("remotePort", "远端端口", 9001, 1, 65535),
             specInt("localPort", "本地监听端口", 9001, 1, 65535),
+            // 监听参数（仅传输=监听时显示）：固定三元组 dip/dport/协议
+            specString("listenIp", "监听IP(dip)", "*"),
+            specInt("listenPort", "监听端口(dport)", 9002, 1, 65535),
+            specEnum("listenProto", "监听协议", "UDP", {"UDP", "TCP"}),
             // 串口参数（仅传输=串口时显示）
             specString("serialPort", "串口", "COM1"),
             specInt("baud", "波特率", 9600, 300, 921600),

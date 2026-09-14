@@ -55,8 +55,11 @@ void UdpLink::launch(uintptr_t sock) {
     thread_ = std::thread([this] { recvLoop(); });
 }
 
-bool UdpLink::start(int localPort, std::string& err) {
+bool UdpLink::start(int localPort, std::string& err, const std::string& filterIp,
+                    int filterPort) {
     stop();
+    filterIp_ = filterIp.empty() ? "*" : filterIp;
+    filterPort_ = filterPort;
 
     SOCKET s = makeSocket(err);
     if (s == INVALID_SOCKET) return false;
@@ -163,6 +166,11 @@ void UdpLink::recvLoop() {
         }
         char ip[64];
         ::inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip));
+        // 监听过滤：三元组 dip/dport 反向命中（源 == 过滤器）；未命中丢弃。
+        // dip="*" 时不限 IP（正向场景：凡到达本端口的报文均命中）
+        if ((filterIp_ != "*" && filterIp_ != ip) ||
+            (filterPort_ != 0 && (int)ntohs(from.sin_port) != filterPort_))
+            continue;
         UdpPacket pkt;
         pkt.from = std::string(ip) + ":" + std::to_string(ntohs(from.sin_port));
         pkt.data.assign(buf, buf + n);

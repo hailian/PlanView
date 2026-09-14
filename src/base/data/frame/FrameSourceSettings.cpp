@@ -105,6 +105,12 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
     s.localPort = (int)props::asInt(ds->propOr("localPort", int64_t(s.localPort)));
+    s.listen = transport == "监听";
+    if (s.listen) {
+        s.listenIp = props::asString(ds->propOr("listenIp", s.listenIp));
+        s.listenPort = (int)props::asInt(ds->propOr("listenPort", int64_t(s.listenPort)));
+        s.listenTcp = props::asString(ds->propOr("listenProto", std::string("UDP"))) == "TCP";
+    }
     s.serialPort = props::asString(ds->propOr("serialPort", s.serialPort));
     s.baud = (int)props::asInt(ds->propOr("baud", int64_t(s.baud)));
     s.dataBits = (int)props::asInt(ds->propOr("dataBits", int64_t(s.dataBits)));

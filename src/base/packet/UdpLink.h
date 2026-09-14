@@ -24,8 +24,12 @@ public:
     UdpLink(const UdpLink&) = delete;
     UdpLink& operator=(const UdpLink&) = delete;
 
-    // 服务端：绑定本地端口并启动收包线程（收任意对端）；失败返回 false + err
-    bool start(int localPort, std::string& err);
+    // 服务端：绑定本地端口并启动收包线程；失败返回 false + err。
+    // 监听过滤（可选）：filterIp=="*" 且 filterPort==0 时收任意对端；
+    // 否则只收源 ==（filterIp, filterPort）的数据报（监听数据源反向命中，
+    // 未命中直接丢弃不进队列；filterPort==0 表示不限源端口）
+    bool start(int localPort, std::string& err, const std::string& filterIp = "*",
+               int filterPort = 0);
     // 客户端：connect 远端（仅收该对端，本地端口由系统临时分配）；失败返回 false + err
     bool startClient(const std::string& host, int port, std::string& err);
     void stop();
@@ -50,6 +54,8 @@ private:
     std::deque<UdpPacket> inbox_;
     std::string remoteHost_ = "127.0.0.1";
     int remotePort_ = 0;
+    std::string filterIp_ = "*"; // 监听过滤：源 IP（"*" 通配）
+    int filterPort_ = 0;         // 监听过滤：源端口（0 不限）
 };
 
 } // namespace softg::packet
