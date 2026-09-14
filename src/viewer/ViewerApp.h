@@ -35,7 +35,6 @@ private:
     void handleInteractions(const Page& page);
     void handleActions();
     void openProjectDialog();
-    void connectDialog();
     void startPolling();
     void stopPolling();
     void detailPopup(const Component& c);
@@ -62,12 +61,6 @@ private:
     RuntimeEngine engine_{project_};
     PageId currentPage_;
     PollWorker worker_;
-
-    // 连接设置对话框
-    bool showConnectDlg_ = false;
-    char hostBuf_[128] = "127.0.0.1";
-    int portBuf_ = 9000;
-    int pollMsBuf_ = 200;
 
     // 组件详情弹窗
     bool showDetail_ = false;

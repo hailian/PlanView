@@ -61,6 +61,9 @@ bool AppShell::createWindow(const AppConfig& config) {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName = kWndClassName;
+    // 应用图标：各 exe 经 .rc 嵌入资源 ID 1（未嵌入时 LoadIcon 返回 null，用系统默认）
+    wc.hIcon = ::LoadIconW(wc.hInstance, MAKEINTRESOURCEW(1));
+    wc.hIconSm = wc.hIcon;
     if (!::RegisterClassExW(&wc)) {
         SOFTG_LOG_ERROR("RegisterClassExW 失败 (%lu)", GetLastError());
         return false;

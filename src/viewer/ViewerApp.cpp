@@ -75,11 +75,6 @@ bool ViewerApp::openPath(const std::string& path) {
     size_t slash = dir.find_last_of("/\\");
     textures_.setBaseDir(slash == std::string::npos ? "." : dir.substr(0, slash));
 
-    // 连接参数初始化为工程设置
-    snprintf(hostBuf_, sizeof(hostBuf_), "%s", project_.settings.tcp.host.c_str());
-    portBuf_ = project_.settings.tcp.port;
-    pollMsBuf_ = project_.settings.tcp.pollMs;
-
     saveRecentPath(path);
     SOFTG_LOG_INFO("工程已加载: %s (%d 页 / %d 标签 / %d 关联)", path.c_str(),
                    (int)project_.pages.size(), (int)project_.tags.all().size(),
@@ -108,36 +103,6 @@ void ViewerApp::startPolling() {
 }
 
 void ViewerApp::stopPolling() { worker_.stop(); }
-
-void ViewerApp::connectDialog() {
-    if (!ImGui::Begin("连接设置", &showConnectDlg_, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::End();
-        return;
-    }
-    ImGui::InputText("主机", hostBuf_, sizeof(hostBuf_));
-    ImGui::InputInt("端口", &portBuf_);
-    ImGui::InputInt("轮询间隔(ms)", &pollMsBuf_);
-    portBuf_ = std::clamp(portBuf_, 1, 65535);
-    pollMsBuf_ = std::clamp(pollMsBuf_, 20, 10000);
-    ImGui::Separator();
-    float s = shell_.dpiScale();  // 按钮定宽适配高缩放
-    if (ImGui::Button("应用并重连", ImVec2(110 * s, 0))) {
-        project_.settings.tcp.host = hostBuf_;
-        project_.settings.tcp.port = portBuf_;
-        project_.settings.tcp.pollMs = pollMsBuf_;
-        stopPolling();
-        startPolling();
-        showConnectDlg_ = false;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("断开", ImVec2(80 * s, 0))) {
-        stopPolling();
-        showConnectDlg_ = false;
-    }
-    ImGui::SameLine();
-    ImGui::TextUnformatted(worker_.isConnected() ? "已连接" : "未连接");
-    ImGui::End();
-}
 
 // ---- 每帧主流程 ----
 
@@ -188,8 +153,6 @@ void ViewerApp::drawMainUi() {
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine();
         if (ImGui::Button("打开")) openProjectDialog();
-        ImGui::SameLine();
-        if (ImGui::Button("连接设置")) showConnectDlg_ = true;
         if (project_.settings.frame.enabled) {
             ImGui::SameLine();
             // 帧数据源手动启停（autoStart 关时打开工程不主动连接，由此启动）
@@ -207,8 +170,6 @@ void ViewerApp::drawMainUi() {
         ImGui::TextDisabled("缩放 %.0f%%  (滚轮/中键拖动)", viewZoom_ * 100.0f);
         ImGui::End();
     }
-
-    if (showConnectDlg_) connectDialog();
 
     drawAlarmBanner();
 

@@ -1,6 +1,7 @@
 # PageViewer — 页面展示软件（运行器）
 add_executable(PageViewer
     main.cpp
+    app.rc
     ViewerApp.cpp
     PollWorker.cpp
 )

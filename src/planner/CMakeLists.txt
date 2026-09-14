@@ -1,12 +1,12 @@
 # LogicPlanner — 逻辑规划软件（设计器）
 add_executable(LogicPlanner
     main.cpp
+    app.rc
     PlannerApp.cpp
     PlannerContext.cpp
     Document.cpp
     panels/Palette.cpp
     panels/Pages.cpp
-    panels/PacketDebug.cpp
     panels/Canvas.cpp
     panels/Inspector.cpp
     panels/Associations.cpp

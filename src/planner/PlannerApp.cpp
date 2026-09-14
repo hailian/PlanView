@@ -83,7 +83,6 @@ bool PlannerApp::frame() {
     panels::drawCanvas(ctx_);
     panels::drawInspector(ctx_);
     panels::drawValidation(ctx_);
-    if (showPacketDebug_) panels::drawPacketDebug(packetDebug_);
     return !exit_;
 }
 
@@ -177,12 +176,6 @@ void PlannerApp::mainMenu() {
         ImGui::Separator();
         if (ImGui::MenuItem("删除选中", "Del", false, !ctx_.selection.empty()))
             ctx_.deleteSelection();
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("工具")) {
-        ImGui::MenuItem("报文调试", nullptr, &showPacketDebug_);
-        ImGui::Separator();
-        ImGui::TextDisabled("数据源 = 「通信」分类组件，拖到画布后在属性面板配置");
         ImGui::EndMenu();
     }
     ImGui::EndMainMenuBar();

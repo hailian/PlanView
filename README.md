@@ -57,7 +57,7 @@ out\build\x64-debug\PageViewer.exe examples\demo_project.json
 
 - 打开工程（或命令行参数直接指定，或欢迎界面"打开上次"）
 - 左键操作 Button/Switch/Slider（有绑定时自动写回服务器），右键任意组件看详情（绑定值/质量/告警）
-- 「连接设置」可覆盖工程内的 host/port/轮询间隔
+- 帧数据源顶栏「启动/停止数据源」手动控制连接（自动启动关闭时打开工程不主动连接）
 - 断线自动重连（1s 退避），标签显示 CommLost 灰态
 
 ## TCP 数据协议 v1
