@@ -68,9 +68,13 @@ private:
 
     // 报文监视（帧数据源）
     bool showFrameMonitor_ = false;
+    bool showTestGen_ = false;     // 协议测试数据窗口（独立窗口）
+    int genFrameCount_ = 8;        // 协议测试数据生成帧数
+    std::string testHex_;          // 最近生成的随机帧 HEX 文本（每帧一行）
     int selectedFrame_ = -1;   // -1 = 跟随最新一帧
     std::deque<FrameDataSource::FrameLogEntry> frameLog_;
     void drawFrameMonitor();
+    void drawTestGen();
 
     // 交互状态
     std::map<ComponentId, std::chrono::steady_clock::time_point> pressedUntil_;  // 按钮按下反馈

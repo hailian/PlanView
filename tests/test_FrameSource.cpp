@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "base/data/frame/FrameDataSource.h"
+#include "base/data/frame/TestFrameGen.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/HexUtil.h"
 #include "base/packet/SerialLink.h"
@@ -149,6 +150,78 @@ TEST_CASE("帧数据源：TLV 跨槽位隔离") {
 
     sender.stop();
     src.disconnect();
+}
+
+TEST_CASE("测试帧生成：TLV 逐字段成帧且可拆回") {
+    packet::FramingConfig fr; // 默认 TLV：T1B L2B 大端
+    std::vector<TagField> fields;
+    TagField a;
+    a.name = "温度"; a.tagId = 1; a.offset = 0; a.type = packet::FieldType::U16; a.bytes = 2;
+    fields.push_back(a);
+    TagField b;
+    b.name = "状态"; b.tagId = 2; b.offset = 2; b.type = packet::FieldType::Enum; b.bytes = 1;
+    b.enums = {{0, "停止"}, {1, "运行"}};
+    fields.push_back(b);
+
+    auto frames = generateTestFrames(fr, fields, 3, 42);
+    REQUIRE(frames.size() == 6); // 每字段一帧 x 3 组
+
+    // 全部帧可拆回且结构对称：tagId/负载长度匹配 offset+bytes
+    packet::FrameSplitter sp(fr);
+    std::vector<std::vector<uint8_t>> out;
+    for (const auto& f : frames) {
+        sp.feed(f.data(), f.size(), out);
+    }
+    REQUIRE(out.size() == 6);
+    for (const auto& f : out) {
+        int64_t tagId = -1;
+        const uint8_t* payload = nullptr;
+        int payloadLen = 0;
+        REQUIRE(packet::decodeFrameOnce(fr, f, tagId, payload, payloadLen));
+        bool known = false;
+        for (const auto& tf : fields)
+            if (tf.tagId == tagId) {
+                CHECK(payloadLen >= tf.offset + tf.bytes);
+                known = true;
+            }
+        CHECK(known);
+    }
+    // 枚举帧负载末字节必是映射表中的编码值
+    for (size_t i = 1; i < frames.size(); i += 2) {
+        uint8_t v = frames[i].back();
+        CHECK((v == 0 || v == 1));
+    }
+}
+
+TEST_CASE("测试帧生成：帧头+Length 一帧含全部字段") {
+    packet::FramingConfig fr;
+    fr.mode = packet::FrameMode::HeaderLength;
+    std::string hexErr;
+    packet::hexToBytes("AA 55", fr.header, hexErr);
+    fr.lenOffset = 2;
+    fr.lenBytesHeader = 2;
+    std::vector<TagField> fields;
+    TagField a;
+    a.name = "温度"; a.tagId = 0; a.offset = 0; a.type = packet::FieldType::F32; a.bytes = 4;
+    fields.push_back(a);
+    TagField b;
+    b.name = "计数"; b.tagId = 0; a.offset = 4;
+    b.offset = 4; b.type = packet::FieldType::U32; b.bytes = 4;
+    fields.push_back(b);
+
+    auto frames = generateTestFrames(fr, fields, 4, 7);
+    REQUIRE(frames.size() == 4);
+    for (const auto& f : frames) {
+        CHECK(f.size() == 4 + 8);            // 帧头2 + length2 + 负载8
+        CHECK(f[0] == 0xAA && f[1] == 0x55); // 帧头
+        uint16_t len = (uint16_t)((f[2] << 8) | f[3]);
+        CHECK(len == 8);                     // 大端 length = 负载长
+    }
+    // 喂拆帧器全部成帧
+    packet::FrameSplitter sp(fr);
+    std::vector<std::vector<uint8_t>> out;
+    for (const auto& f : frames) sp.feed(f.data(), f.size(), out);
+    CHECK(out.size() == 4);
 }
 
 TEST_CASE("数据目的：工程级合成（source 按名称关联数据源）") {

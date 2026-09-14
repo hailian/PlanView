@@ -5,7 +5,9 @@
 #include <fstream>
 
 #include "base/appshell/FileDialog.h"
+#include "base/data/frame/TestFrameGen.h"
 #include "base/log/Log.h"
+#include "base/packet/HexUtil.h"
 #include "base/model/ComponentRegistry.h"
 #include "base/render/ComponentRenderer.h"
 #include "base/serialize/JsonHelpers.h"
@@ -165,6 +167,8 @@ void ViewerApp::drawMainUi() {
             }
             ImGui::SameLine();
             ImGui::Checkbox("报文监视", &showFrameMonitor_);
+            ImGui::SameLine();
+            ImGui::Checkbox("协议测试数据", &showTestGen_);
         }
         ImGui::SameLine();
         ImGui::TextDisabled("缩放 %.0f%%  (滚轮/中键拖动)", viewZoom_ * 100.0f);
@@ -200,6 +204,7 @@ void ViewerApp::drawMainUi() {
     drawStatusBar();
 
     if (showFrameMonitor_) drawFrameMonitor();
+    if (showTestGen_) drawTestGen();
 
     if (showDetail_) {
         if (const Component* c = project_.findComponent(detailComp_))
@@ -521,6 +526,59 @@ void ViewerApp::drawFrameMonitor() {
             }
             ImGui::EndTable();
         }
+    }
+    ImGui::End();
+}
+
+// 协议测试数据（独立窗口）：按工程规约生成随机帧 HEX，喂回链路验证解析/转发
+void ViewerApp::drawTestGen() {
+    if (!ImGui::Begin("协议测试数据", &showTestGen_))
+        return ImGui::End();
+
+    const auto& fr = project_.settings.frame;
+    if (fr.fields.empty()) {
+        ImGui::TextDisabled("(无规约字段：请先在协议配置中定义字段)");
+        ImGui::End();
+        return;
+    }
+    ImGui::SetNextItemWidth(120 * shell_.dpiScale());
+    ImGui::InputInt("帧数", &genFrameCount_, 0, 0);
+    genFrameCount_ = std::clamp(genFrameCount_, 1, 1000);
+    ImGui::SameLine();
+    float s = shell_.dpiScale();
+    if (ImGui::Button("生成", ImVec2(80 * s, 0))) {
+        // 每帧一行 HEX（真实换行），复制/保存即用
+        auto frames = generateTestFrames(fr.framing, fr.fields, genFrameCount_);
+        testHex_.clear();
+        for (const auto& f : frames) {
+            testHex_ += packet::bytesToHex(f);
+            testHex_ += '\n';
+        }
+    }
+    ImGui::SameLine();
+    if (!testHex_.empty() && ImGui::Button("复制全部", ImVec2(100 * s, 0)))
+        ImGui::SetClipboardText(testHex_.c_str());
+    ImGui::SameLine();
+    if (!testHex_.empty() && ImGui::Button("保存 TXT...", ImVec2(100 * s, 0))) {
+        std::string path;
+        if (dialog::saveFile("保存测试帧", {{"文本文件 (*.txt)", "*.txt"}},
+                             "test_frames.txt", path)) {
+            std::ofstream out(path, std::ios::binary);
+            out << testHex_;
+        }
+    }
+    ImGui::TextDisabled("TLV 每字段一帧；帧头+Length 每帧含全部字段（每行一帧）");
+    if (!testHex_.empty()) {
+        ImGui::BeginChild("fmtest", ImVec2(0, ImGui::GetTextLineHeight() * 12),
+                          ImGuiChildFlags_Borders);
+        size_t pos = 0;
+        while (pos < testHex_.size()) {
+            size_t nl = testHex_.find('\n', pos);
+            size_t end = nl == std::string::npos ? testHex_.size() : nl;
+            ImGui::TextUnformatted(testHex_.c_str() + pos, testHex_.c_str() + end);
+            pos = nl == std::string::npos ? testHex_.size() : nl + 1;
+        }
+        ImGui::EndChild();
     }
     ImGui::End();
 }

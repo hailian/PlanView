@@ -24,6 +24,7 @@ add_library(softg_base STATIC
     data/DataSourceManager.cpp
     data/frame/FrameDataSource.cpp
     data/frame/FrameSourceSettings.cpp
+    data/frame/TestFrameGen.cpp
     data/tcp/SoftgProtocol.cpp
     data/tcp/TcpDataSource.cpp
     llm/AiProto.cpp
