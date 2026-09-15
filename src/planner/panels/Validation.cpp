@@ -1,5 +1,6 @@
 #include "planner/panels/Validation.h"
 
+#include "base/packet/UsbLink.h" // parseDeviceToken（USB 设备标识校验）
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
@@ -109,6 +110,19 @@ void drawValidation(PlannerContext& ctx) {
                 props::asString(firstDs->propOr("listenNic", std::string())).empty())
                 issues.push_back({"镜像抓包未选择抓包网卡（运行器无法启动监听）",
                                   firstDs->id, true});
+
+            // USB 传输须选择合法设备标识（libusb DLL 是否放置由运行器连接时报错提示）
+            if (props::asString(firstDs->propOr("transport", std::string("UDP"))) == "USB") {
+                std::string dev =
+                    props::asString(firstDs->propOr("usbDevice", std::string()));
+                uint16_t vid = 0, pid = 0;
+                std::string serial, perr;
+                if (dev.empty())
+                    issues.push_back({"USB 传输未选择 USB 设备（运行器无法启动收包）",
+                                      firstDs->id, true});
+                else if (!packet::parseDeviceToken(dev, vid, pid, serial, perr))
+                    issues.push_back({"USB 设备标识非法（" + perr + "）", firstDs->id, true});
+            }
         }
 
         // 数据源关联的协议组须存在；组内成员协议须存在
@@ -158,6 +172,16 @@ void drawValidation(PlannerContext& ctx) {
                 else if (firstDs && srcName != firstDs->name)
                     issues.push_back({"数据目的关联的不是首个（生效）数据源: " + srcName,
                                       c.id, true});
+                // USB 转发须选择合法设备标识（与数据源同规则）
+                if (props::asString(c.propOr("transport", std::string("TCP"))) == "USB") {
+                    std::string dev = props::asString(c.propOr("usbDevice", std::string()));
+                    uint16_t vid = 0, pid = 0;
+                    std::string serial, perr;
+                    if (dev.empty())
+                        issues.push_back({"USB 转发未选择 USB 设备（不转发）", c.id, true});
+                    else if (!packet::parseDeviceToken(dev, vid, pid, serial, perr))
+                        issues.push_back({"USB 设备标识非法（" + perr + "）", c.id, true});
+                }
             }
     }
     // 协议配置：重名（关联按名称匹配会歧义）与未被引用提示

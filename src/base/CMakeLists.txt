@@ -18,6 +18,8 @@ add_library(pv_base STATIC
     packet/SerialLink.cpp
     packet/NpcapApi.cpp
     packet/PcapLink.cpp
+    packet/UsbApi.cpp
+    packet/UsbLink.cpp
     render/ComponentRenderer.cpp
     render/TextureCache.cpp
     render/widgets/Widgets.cpp

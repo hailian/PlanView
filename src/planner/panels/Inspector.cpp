@@ -6,6 +6,8 @@
 #include "base/model/ComponentRegistry.h"
 #include "base/packet/NpcapApi.h"
 #include "base/packet/PacketSpec.h"
+#include "base/packet/UsbApi.h"
+#include "base/packet/UsbLink.h" // makeDeviceToken
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include "planner/PlannerContext.h"
@@ -569,6 +571,49 @@ void drawNicSelector(Component& c, PlannerContext& ctx) {
     }
 }
 
+// 传输=USB 时的「USB设备」动态下拉：运行时经 libusb 枚举本机可打开的设备
+//（打不开的键鼠/HID 等不列出），显示 "vid:pid 产品名 [序列号]"、存储
+// "vid:pid[:serial]" token（跨重启稳定，作为工程持久化标识）。
+// 未放置 libusb-1.0.dll 时显示放置提示（保留已存值，便于换机后回来再选）
+void drawUsbDeviceSelector(Component& c, PlannerContext& ctx) {
+    std::string cur = props::asString(c.propOr("usbDevice", std::string()));
+    std::string err;
+    auto devices = packet::libusb::listDevices(err);
+    if (devices.empty()) {
+        if (err.empty())
+            err = "无可打开的 USB 设备（设备需 WinUSB/libusb 驱动，可用 Zadig 安装）";
+        ImGui::TextColored(ImVec4(1, 0.7f, 0.45f, 1), "USB设备: %s", err.c_str());
+        return;
+    }
+    auto tokenOf = [](const packet::libusb::DeviceInfo& d) {
+        return d.serial.empty() ? packet::makeDeviceToken(d.vid, d.pid, "")
+                                : packet::makeDeviceToken(d.vid, d.pid, d.serial);
+    };
+    auto labelOf = [&](const packet::libusb::DeviceInfo& d) {
+        std::string tok = tokenOf(d);
+        std::string label = tok;
+        if (!d.product.empty()) label += " " + d.product;
+        return label;
+    };
+    std::string preview = "(未选择)";
+    for (const auto& d : devices)
+        if (tokenOf(d) == cur) preview = labelOf(d);
+    if (preview == "(未选择)" && !cur.empty())
+        preview = cur + " (未枚举到)"; // 工程来自其他机器/设备已拔
+    if (ImGui::BeginCombo("USB设备", preview.c_str())) {
+        for (const auto& d : devices) {
+            std::string label = labelOf(d);
+            bool sel = tokenOf(d) == cur;
+            if (ImGui::Selectable(label.c_str(), sel) && !sel) {
+                ctx.doc.commit("选择USB设备");
+                c.setProp("usbDevice", tokenOf(d));
+            }
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+}
+
 // 数据目的组件的「关联数据源」动态下拉：候选 = 工程内全部数据源组件名（跨页）
 void drawSourceSelector(Component& c, PlannerContext& ctx) {
     std::string cur = props::asString(c.propOr("source", std::string()));
@@ -821,15 +866,17 @@ void drawInspector(PlannerContext& ctx) {
         bool dsListen = dsTransport == "监听";
         // 自发（仅数据源）：本地模拟设备——只配周期，无角色/地址/端口/网卡项
         bool dsSelfSend = !isSink && dsTransport == "自发";
+        // USB（源/目的通用）：libusb/WinUSB 设备——无角色/地址/端口概念，仅设备/接口/端点
+        bool dsUsb = dsTransport == "USB";
         // 监听方式=镜像抓包：Npcap 混杂模式（交换机 SPAN 场景），需选抓包网卡
         bool dsListenPcap =
             dsListen && props::asString(
                             c->propOr("listenMode", std::string("本机端口"))) == "镜像抓包";
         bool dsUdpClient =
-            !dsListen && !dsTcp && !dsSerial &&
+            !dsListen && !dsTcp && !dsSerial && !dsUsb &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
         bool dsUdpMcast =
-            !dsListen && !dsTcp && !dsSerial &&
+            !dsListen && !dsTcp && !dsSerial && !dsUsb &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "组播";
         bool dsTcpServer =
             !dsListen && dsTcp &&
@@ -837,13 +884,14 @@ void drawInspector(PlannerContext& ctx) {
         // host：TCP/UDP 客户端目标 / UDP 组播的组地址（224~239 段）。组播端口项随组件而异：
         // 数据源=localPort（bind + 加入组）；数据目的=remotePort（发往组地址，无需加入组）
         bool mcastUseRemotePort = isSink;
-        bool dsUseHost = dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast);
-        bool dsUseRemotePort = dsTcp ? !dsTcpServer
-                                      : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort));
+        bool dsUseHost = !dsUsb && (dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast));
+        bool dsUseRemotePort =
+            !dsUsb && (dsTcp ? !dsTcpServer
+                             : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort)));
         bool dsUseLocalPort =
-            !dsListen && (dsTcp ? dsTcpServer
-                                : (!dsUdpClient && !dsSerial &&
-                                   !(dsUdpMcast && mcastUseRemotePort)));
+            !dsListen && !dsUsb &&
+            (dsTcp ? dsTcpServer
+                   : (!dsUdpClient && !dsSerial && !(dsUdpMcast && mcastUseRemotePort)));
         bool protoTlv =
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
@@ -852,10 +900,12 @@ void drawInspector(PlannerContext& ctx) {
                     continue; // 动态下拉（候选为协议/数据源/协议组组件名）
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
-                // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
-                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsListen || dsSelfSend))
+                // 串口/USB 无角色/端口概念，各只显示自己的一组设备参数
+                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsUsb || dsListen ||
+                                              dsSelfSend))
                     continue;
-                if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsListen)) continue;
+                if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsUsb || dsListen))
+                    continue;
                 if (spec.key == "host" && (!dsUseHost || dsSelfSend)) continue;
                 if (spec.key == "remotePort" && (!dsUseRemotePort || dsSelfSend)) continue;
                 if (spec.key == "localPort" && (!dsUseLocalPort || dsSelfSend)) continue;
@@ -864,6 +914,14 @@ void drawInspector(PlannerContext& ctx) {
                                   spec.key == "dataBits" || spec.key == "parity" ||
                                   spec.key == "stopBits";
                 if (serialItem && !dsSerial) continue; // 仅串口
+                bool usbItem = spec.key == "usbInterface" || spec.key == "usbEpIn" ||
+                               spec.key == "usbEpOut";
+                if (usbItem && !dsUsb) continue; // 仅 USB
+                if (spec.key == "usbDevice") { // 动态下拉（运行时 libusb 枚举）
+                    if (!dsUsb) continue;
+                    drawUsbDeviceSelector(*c, ctx);
+                    continue;
+                }
                 bool listenItem = spec.key == "listenIp" || spec.key == "listenPort" ||
                                   spec.key == "listenProto";
                 if (listenItem && !dsListen) continue; // 仅监听（三元组）

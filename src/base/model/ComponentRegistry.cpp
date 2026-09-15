@@ -146,7 +146,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
             specBool("autoStart", "自动启动", false),
-            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听", "自发"}),
+            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听", "自发", "USB"}),
             // 自发（本地模拟设备）：仅配周期——按关联协议格式周期性产帧直接驱动自身解析
             //（无网络、无端口），字段值按类型确定性递增（整数 0..max 环回/枚举遍历/字符串 a..z）
             specInt("autoSendMs", "发送周期(ms)", 1000, 20, 60000),
@@ -172,6 +172,12 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specInt("dataBits", "数据位", 8, 5, 8),
             specEnum("parity", "校验", "无", {"无", "奇", "偶"}),
             specInt("stopBits", "停止位", 1, 1, 2),
+            // USB 参数（仅传输=USB 时显示）：libusb/WinUSB 设备字节流（同串口拆帧）；
+            // 设备经 libusb-1.0.dll 枚举（运行时可选依赖，未放置时连接报放置提示）
+            specString("usbDevice", "USB设备", ""), // 动态下拉（运行时 libusb 枚举）
+            specInt("usbInterface", "USB接口号", 0, 0, 255),
+            specString("usbEpIn", "IN端点(hex)", ""),  // 空 = 自动选首个批量/中断 IN
+            specString("usbEpOut", "OUT端点(hex)", ""), // 空 = 自动选
             specString("protocol", "关联协议/组", ""), // 协议配置或协议组组件名（统一动态下拉）
         };
         t.push_back(std::move(i));
@@ -204,7 +210,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         ComponentTypeInfo i{"DataSink", "数据目的", "通信", {170, 84}, {}};
         i.properties = {
             specString("source", "关联数据源", ""), // 数据源组件名（Inspector 动态下拉）
-            specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口"}),
+            specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口", "USB"}),
             // UDP 角色：客户端=发往 host:remotePort；服务端=绑定 localPort 发往最近对端；
             // 组播=发往 host(组地址 224~239):remotePort（发送方无需加入组）
             specEnum("udpRole", "UDP角色", "客户端", {"服务端", "客户端", "组播"}),
@@ -217,6 +223,10 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specInt("dataBits", "数据位", 8, 5, 8),
             specEnum("parity", "校验", "无", {"无", "奇", "偶"}),
             specInt("stopBits", "停止位", 1, 1, 2),
+            // USB 转发参数（仅传输=USB 时显示）：只需设备/接口/OUT 端点（转发只发不收）
+            specString("usbDevice", "USB设备", ""), // 动态下拉（运行时 libusb 枚举）
+            specInt("usbInterface", "USB接口号", 0, 0, 255),
+            specString("usbEpOut", "OUT端点(hex)", ""), // 空 = 自动选
         };
         t.push_back(std::move(i));
     }

@@ -1,6 +1,6 @@
-// FrameDataSource — 帧数据源组件：TCP/UDP/串口接入 + 自配置规约解析 + 标签槽位映射。
-// TCP/串口字节流按 TLV / 帧头+Length 拆帧；UDP 数据报天然成帧。
-// 传输角色：客户端 connect 远端 / 服务端监听（TCP listen / UDP bind）本地端口；串口无角色。
+// FrameDataSource — 帧数据源组件：TCP/UDP/串口/USB 接入 + 自配置规约解析 + 标签槽位映射。
+// TCP/串口/USB 字节流按 TLV / 帧头+Length 拆帧；UDP 数据报天然成帧。
+// 传输角色：客户端 connect 远端 / 服务端监听（TCP listen / UDP bind）本地端口；串口/USB 无角色。
 // 推收结合：收包线程持续成帧并解析缓存；readTags 返回各标签槽位的最新解析值。
 // v1 只收不发（supportsWrite=false），写回走原 PlanView 行协议数据源。
 #pragma once
@@ -20,6 +20,7 @@
 #include "base/packet/SerialLink.h"
 #include "base/packet/TcpLink.h"
 #include "base/packet/UdpLink.h"
+#include "base/packet/UsbLink.h"
 
 namespace pv {
 
@@ -66,6 +67,7 @@ private:
     packet::UdpLink udp_;
     packet::TcpLink tcp_;
     packet::SerialLink serial_; // 串口字节流：与 TCP 共用拆帧路径
+    packet::UsbLink usb_;       // USB 字节流（libusb/WinUSB 设备）：与串口同路拆帧
     packet::PcapLink pcap_;     // 监听=镜像抓包：Npcap 混杂模式收第三方流量
     packet::FrameSplitter splitter_{cfg_.framing};
     packet::FlowSplitters flows_{cfg_.framing}; // 镜像 TCP 逐流拆帧（UDP 直通）

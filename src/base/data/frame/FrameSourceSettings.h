@@ -36,8 +36,9 @@ struct TagField {
 // 传输参数与 FrameSourceSettings 同构；sourceName 按名称关联数据源组件。
 struct FrameSinkSettings {
     std::string sourceName;          // 关联的数据源组件名（空 = 未关联）
-    bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
+    bool udp = false;                // 传输选择（serial 优先，其次 usb/udp，均 false = TCP）
     bool serial = false;
+    bool usb = false;                // USB（libusb/WinUSB 设备 OUT 端点发帧）
     bool udpClient = false;          // 仅 UDP：客户端=发往 connect 的远端；服务端=发往最近对端
     bool udpMulticast = false;       // 仅 UDP：组播=发往 host(组地址):remotePort（无需加入组）
     bool tcpClient = true;           // 仅 TCP：客户端=连接远端；服务端=监听，向接入方转发
@@ -49,6 +50,9 @@ struct FrameSinkSettings {
     int dataBits = 8;
     std::string parity = "无";
     int stopBits = 1;
+    std::string usbDevice;           // 仅 USB："vid:pid[:serial]"
+    int usbInterface = 0;            // bInterfaceNumber
+    std::string usbEpOut;            // OUT 端点 hex（"01"），空 = 自动选择
 };
 
 struct FrameSourceSettings {
@@ -56,8 +60,9 @@ struct FrameSourceSettings {
     bool autoStart = false;          // 仅帧数据源：true=PageViewer 打开即连接；false=顶栏手动启动
     bool autoSend = false;           // 自发送（模拟设备）：按关联协议格式周期性发帧（收包不受影响）
     int autoSendMs = 1000;           // 自发送周期（ms），20..60000
-    bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
+    bool udp = false;                // 传输选择（serial 优先，其次 usb/udp，均 false = TCP）
     bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
+    bool usb = false;                // true=USB 字节流（libusb/WinUSB 设备，同样走 TCP 拆帧）
     bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)
     bool udpMulticast = false;       // 仅 UDP：true=组播（bind 本地端口 + 加入 host 组播组）
     bool tcpClient = true;           // 仅 TCP：true=客户端(connect 远端)；false=服务端(listen 本地)
@@ -84,6 +89,12 @@ struct FrameSourceSettings {
     int dataBits = 8;                // 数据位 5..8
     std::string parity = "无";       // 校验：无 / 奇 / 偶
     int stopBits = 1;                // 停止位 1 / 2
+
+    // 仅 USB（libusb-1.0.dll 运行时可选；设备需 WinUSB/libusb 驱动）
+    std::string usbDevice;           // "vid:pid[:serial]"（十六进制，如 "0483:5740"）
+    int usbInterface = 0;            // bInterfaceNumber
+    std::string usbEpIn;             // IN 端点 hex（"81"），空 = 自动选择首个批量/中断 IN
+    std::string usbEpOut;            // OUT 端点 hex（"01"），空 = 自动选择
 
     packet::FramingConfig framing;   // 主拆帧配置（首个成员/单协议）；仅 TCP 生效，UDP 天然成帧
     // 协议组多帧头：各成员的拆帧配置（帧头+Length 不同帧头时各成一条；TLV/单一配置为空）。
