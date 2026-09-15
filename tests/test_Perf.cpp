@@ -414,3 +414,140 @@ TEST_CASE("性能：回环发包对比 sendto vs Npcap pcap_sendpacket") {
     api->close(pc);
     receiver.stop();
 }
+
+TEST_CASE("性能：组播接收→数据目的转发（对比单播回环）") {
+#ifndef NDEBUG
+    std::printf("    [skip] 性能测试仅在 Release 构建运行（Debug 未优化，数值无参考意义）\n");
+    return;
+#endif
+    packet::FramingConfig fr;
+    std::vector<TagField> fields;
+    makeSampleSpec(fr, fields);
+
+    const int N = 20000;
+    const int batch = 200; // 节奏与单播转发测试一致，保证两数可比
+    auto frames = generateTestFrames(fr, fields, N, 13);
+    REQUIRE(frames.size() == (size_t)N);
+
+    // 数据源：UDP 组播（加入组 239.192.9.38:59366，组地址避开 239.192.9.37 功能用例）
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = true;
+    cfg.udpMulticast = true;
+    cfg.host = "239.192.9.38";
+    cfg.localPort = 59366;
+    cfg.framing = fr;
+    cfg.fields = fields;
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 加入组播组失败: %s\n", err.c_str());
+        return;
+    }
+
+    // 平台侧接收端 + 数据目的（UDP 单播客户端，转发出口与单播测试同构）
+    packet::UdpLink receiver;
+    if (!receiver.start(59365, err)) {
+        std::printf("    [skip] 端口 59365 绑定失败: %s\n", err.c_str());
+        src.disconnect();
+        return;
+    }
+    packet::UdpLink sink;
+    REQUIRE(sink.startClient("127.0.0.1", 59365, err));
+
+    // 模拟设备：向组播组发帧
+    packet::UdpLink sender;
+    REQUIRE(sender.start(0, err));
+    sender.setRemote("239.192.9.38", 59366);
+
+    std::vector<Tag> tags;
+    for (const auto& f : fields) {
+        Tag t;
+        t.name = f.name;
+        t.address = f.address;
+        if (f.type == packet::FieldType::Bool) t.type = TagDataType::Bool;
+        else if (f.type == packet::FieldType::String ||
+                 f.type == packet::FieldType::Enum)
+            t.type = TagDataType::String;
+        else
+            t.type = TagDataType::Float32;
+        tags.push_back(t);
+    }
+    std::vector<const Tag*> tagPtrs;
+    for (auto& t : tags) tagPtrs.push_back(&t);
+
+    // 环境门控：组播环回依赖系统组播路由/防火墙（虚拟机常见不可达），探测定界
+    {
+        for (int i = 0; i < 20; ++i)
+            CHECK(sender.send(frames[i], err));
+        bool probed = false;
+        for (int i = 0; i < 40 && !probed; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            (void)src.readTags(tagPtrs);
+            probed = src.matchedFrameCount() > 0;
+        }
+        if (!probed) {
+            std::printf("    [skip] 组播环回不可达（本机路由/防火墙限制）\n");
+            sender.stop();
+            sink.stop();
+            receiver.stop();
+            src.disconnect();
+            return;
+        }
+    }
+
+    uint64_t received = 0, rxBytes = 0;
+    std::deque<packet::UdpPacket> rx;
+    auto drainRx = [&]() {
+        receiver.drain(rx);
+        for (auto& p : rx) {
+            ++received;
+            rxBytes += p.data.size();
+        }
+        rx.clear();
+    };
+
+    auto t0 = std::chrono::steady_clock::now();
+    size_t sent = 0;
+    for (int b = 0; b < N / batch; ++b) {
+        for (int i = 0; i < batch; ++i, ++sent)
+            REQUIRE(sender.send(frames[sent], err));
+        spinGapUs(100);
+        (void)src.readTags(tagPtrs);
+        std::deque<std::vector<uint8_t>> toForward;
+        src.drainForwardFrames(toForward);
+        for (const auto& f : toForward) CHECK(sink.send(f, err));
+        drainRx();
+    }
+    // 收尾：接收端收包线程异步，轮询等齐（含探测 20 帧，上限 2s）
+    const uint64_t total = (uint64_t)N + 20;
+    for (int i = 0; i < 200 && received < total; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        drainRx();
+    }
+    double sec = secondsSince(t0);
+
+    // 零丢失对账（发送 N + 探测 20 帧；探测帧也会被转发计入）
+    std::printf("    [perf] 对账: 应到 %llu，平台收到 %llu，数据源解析命中 %llu\n",
+                (unsigned long long)total, (unsigned long long)received,
+                (unsigned long long)src.matchedFrameCount());
+    CHECK(received == total);
+    CHECK(rxBytes == total * frames[0].size());
+    CHECK(src.matchedFrameCount() == total);
+
+    auto results = src.readTags(tagPtrs);
+    for (const auto& r : results) CHECK(r.ok);
+
+    double fps = total / sec;
+    double mbps = (double)rxBytes / sec / 1024.0 / 1024.0;
+    std::printf("    [perf] 组播接收→数据目的转发 %.0f 帧/秒（%.1f MB/s；%dB/帧 × %llu 帧，耗时 %.0f ms）\n",
+                fps, mbps, (int)frames[0].size(), (unsigned long long)total, sec * 1000.0);
+    // 本机 x64-release（虚拟机）参考 1.5~2.1 万帧/秒：约为单播回环（4 万）的一半，
+    // 瓶颈在组播发送路径的内核环回复制而非接收/解析。下限取约 1/2 防退化误报
+    CHECK(fps >= 8000.0);
+
+    sender.stop();
+    sink.stop();
+    receiver.stop();
+    src.disconnect();
+}

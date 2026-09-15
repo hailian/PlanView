@@ -12,6 +12,9 @@
 
 namespace pv::packet {
 
+// 组播组地址校验：合法 IPv4 且在 224.0.0.0~239.255.255.255（D 类）段
+bool isMulticastIp(const std::string& ip);
+
 struct UdpPacket {
     std::string from;      // 对端 "ip:port"
     std::vector<uint8_t> data;
@@ -32,6 +35,9 @@ public:
                int filterPort = 0);
     // 客户端：connect 远端（仅收该对端，本地端口由系统临时分配）；失败返回 false + err
     bool startClient(const std::string& host, int port, std::string& err);
+    // 组播：绑定 localPort 并加入 group 组播组（224.0.0.0~239.255.255.255，接口取默认路由）；
+    // SO_REUSEADDR 允许同机多个监听者共收一组。发送方向 = 发往 组地址:localPort
+    bool startMulticast(const std::string& group, int localPort, std::string& err);
     void stop();
     bool isRunning() const { return running_; }
 

@@ -32,6 +32,12 @@ bool fillAddr(const std::string& host, int port, sockaddr_in& addr, std::string&
 
 } // namespace
 
+bool isMulticastIp(const std::string& ip) {
+    in_addr a{};
+    if (::inet_pton(AF_INET, ip.c_str(), &a) != 1) return false;
+    return (ntohl(a.s_addr) >> 28) == 14; // 首 nibble 0xE：224~239（D 类），240+ 为保留段
+}
+
 // 建 socket 并完成 WSAStartup；失败由调用方 closesocket/WSACleanup
 static SOCKET makeSocket(std::string& err) {
     WSADATA wsa;
@@ -111,6 +117,52 @@ bool UdpLink::startClient(const std::string& host, int port, std::string& err) {
     connected_ = true;
     launch((uintptr_t)s);
     PV_LOG_INFO("UDP 客户端连接: %s:%d", host.c_str(), port);
+    return true;
+}
+
+bool UdpLink::startMulticast(const std::string& group, int localPort, std::string& err) {
+    stop();
+    filterIp_ = "*";
+    filterPort_ = 0;
+
+    // 组地址校验：须为 IPv4 组播段（D 类 224~239）
+    ip_mreq mreq{};
+    if (!isMulticastIp(group)) {
+        err = "组播组地址无效（应为 224.0.0.0~239.255.255.255）: " + group;
+        return false;
+    }
+    ::inet_pton(AF_INET, group.c_str(), &mreq.imr_multiaddr); // 已校验，必成功
+
+    SOCKET s = makeSocket(err);
+    if (s == INVALID_SOCKET) return false;
+    // 端口复用：组播常见「同机多消费者共收一组」，两个套接字同绑一组端口
+    BOOL reuse = TRUE;
+    ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((u_short)localPort);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    if (::bind(s, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        err = "绑定端口失败: " + std::to_string(localPort) +
+              " (WSA=" + std::to_string(WSAGetLastError()) + ")";
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    // 加入组播组（imr_interface=INADDR_ANY 跟随默认组播路由；本机发出的组播报文
+    // 因 IP_MULTICAST_LOOP 默认开启，同组本机成员也能收到）
+    mreq.imr_interface.s_addr = INADDR_ANY;
+    if (::setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&mreq, sizeof(mreq)) ==
+        SOCKET_ERROR) {
+        err = "加入组播组失败 " + group + " (WSA=" + std::to_string(WSAGetLastError()) + ")";
+        ::closesocket(s);
+        ::WSACleanup();
+        return false;
+    }
+    connected_ = false;
+    setRemote(group, localPort); // 发往组地址（数据源 v1 只收，保持对称可用）
+    launch((uintptr_t)s);
+    PV_LOG_INFO("UDP 组播启动: 组 %s 端口 %d", group.c_str(), localPort);
     return true;
 }
 

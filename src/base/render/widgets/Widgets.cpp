@@ -582,6 +582,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     } else if (udpRole == "客户端") {
         std::snprintf(line, sizeof(line), "UDP客户端 -> %s:%lld", host.c_str(),
                       (long long)remotePort);
+    } else if (udpRole == "组播") {
+        std::snprintf(line, sizeof(line), "UDP组播 %s:%lld", host.c_str(),
+                      (long long)localPort);
     } else {
         std::snprintf(line, sizeof(line), "UDP服务端 :%lld", (long long)localPort);
     }
@@ -639,6 +642,9 @@ void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
                           (long long)remotePort);
     } else if (udpRole == "客户端") {
         std::snprintf(line, sizeof(line), "-> UDP %s:%lld", host.c_str(),
+                      (long long)remotePort);
+    } else if (udpRole == "组播") {
+        std::snprintf(line, sizeof(line), "-> UDP组播 %s:%lld", host.c_str(),
                       (long long)remotePort);
     } else {
         std::snprintf(line, sizeof(line), "-> UDP服务端 :%lld", (long long)localPort);

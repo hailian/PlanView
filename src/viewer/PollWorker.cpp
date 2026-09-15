@@ -230,8 +230,20 @@ void PollWorker::connectSink(SinkLink& sk, std::string& err) {
         sk.up = sk.serial->open(k.serialPort, k.baud, k.dataBits, k.parity, k.stopBits, err);
     } else if (k.udp) {
         if (!sk.udp) sk.udp = std::make_unique<packet::UdpLink>();
-        sk.up = k.udpClient ? sk.udp->startClient(k.host, k.remotePort, err)
-                            : sk.udp->start(k.localPort, err);
+        if (k.udpMulticast) {
+            // 组播：发送方无需加入组——临时端口 + 发往 组地址:remotePort
+            if (!packet::isMulticastIp(k.host)) {
+                err = "组播组地址无效（应为 224.0.0.0~239.255.255.255）: " + k.host;
+                sk.up = false;
+            } else {
+                sk.up = sk.udp->start(0, err);
+                if (sk.up) sk.udp->setRemote(k.host, k.remotePort);
+            }
+        } else if (k.udpClient) {
+            sk.up = sk.udp->startClient(k.host, k.remotePort, err);
+        } else {
+            sk.up = sk.udp->start(k.localPort, err);
+        }
     } else {
         if (!sk.tcp) sk.tcp = std::make_unique<packet::TcpLink>();
         sk.up = k.tcpClient ? sk.tcp->connect(k.host, k.remotePort, err)

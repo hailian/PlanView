@@ -99,8 +99,10 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     std::string transport = props::asString(ds->propOr("transport", std::string("UDP")));
     s.udp = transport == "UDP";
     s.serial = transport == "串口";
-    s.udpClient = s.udp &&
-                  props::asString(ds->propOr("udpRole", std::string("服务端"))) == "客户端";
+    std::string udpRole = props::asString(ds->propOr("udpRole", std::string("服务端")));
+    s.udpClient = s.udp && udpRole == "客户端";
+    // 组播角色：host=组地址（224~239 段），localPort=组端口（bind + 加入组）
+    s.udpMulticast = s.udp && udpRole == "组播";
     s.tcpClient = props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
@@ -133,8 +135,11 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
                 c.propOr("transport", std::string("TCP"))); // 与注册表默认一致
             k.udp = tr == "UDP";
             k.serial = tr == "串口";
-            k.udpClient = k.udp &&
-                          props::asString(c.propOr("udpRole", std::string("服务端"))) == "客户端";
+            std::string skUdpRole =
+                props::asString(c.propOr("udpRole", std::string("客户端")));
+            k.udpClient = k.udp && skUdpRole == "客户端";
+            // 组播：host=组地址（224~239 段）、remotePort=组端口（发送方无需加入组）
+            k.udpMulticast = k.udp && skUdpRole == "组播";
             k.tcpClient =
                 props::asString(c.propOr("tcpRole", std::string("客户端"))) != "服务端";
             k.host = props::asString(c.propOr("host", k.host));

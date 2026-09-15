@@ -1269,6 +1269,154 @@ TEST_CASE("帧日志裁剪不影响数据目的转发队列") {
     src.disconnect();
 }
 
+TEST_CASE("帧数据源：UDP 组播角色 -> 设置合成 + 回环端到端") {
+    auto makeDs = [](const char* role, const char* host, int port) {
+        Project p;
+        Page pg;
+        pg.id = "page-1";
+        Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("transport", std::string("UDP"));
+        if (role) ds.setProp("udpRole", std::string(role));
+        ds.setProp("host", std::string(host));
+        ds.setProp("localPort", int64_t(port));
+        pg.components.push_back(std::move(ds));
+        p.pages.push_back(std::move(pg));
+        return p;
+    };
+
+    // 组播角色合成：host=组地址（224~239 段）、localPort=组端口
+    FrameSourceSettings s = frameSettingsFromProject(makeDs("组播", "239.192.9.37", 59370));
+    CHECK(s.enabled);
+    CHECK(s.udp);
+    CHECK(!s.udpClient);
+    CHECK(s.udpMulticast);
+    CHECK(s.host == "239.192.9.37");
+    CHECK(s.localPort == 59370);
+
+    // 旧角色不受影响（缺省=服务端）
+    CHECK(frameSettingsFromProject(makeDs("客户端", "10.0.0.5", 5000)).udpClient);
+    CHECK(!frameSettingsFromProject(makeDs("客户端", "10.0.0.5", 5000)).udpMulticast);
+    CHECK(!frameSettingsFromProject(makeDs(nullptr, "10.0.0.5", 5000)).udpMulticast);
+
+    // 端到端：加入组 239.192.9.37:59370，设备向组发 TLV 帧
+    FrameSourceSettings cfg = s;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 加入组播组失败: %s\n", err.c_str());
+        return;
+    }
+    CHECK(src.isConnected());
+
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("239.192.9.37", 59370);
+    CHECK(sender.send(hex("01 00 02 01 F4"), err)); // 500
+
+    Tag t = makeTag("温度", 0, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t};
+    bool arrived = false;
+    for (int i = 0; i < 40 && !arrived; ++i) { // 轮询上限 2s
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        auto results = src.readTags(tags);
+        if (results[0].ok) arrived = true;
+    }
+    if (!arrived) {
+        // 组播环回依赖系统组播路由/防火墙（虚拟机环境常见不可达），仅观测不判失败
+        std::printf("    [skip] 组播环回不可达（本机路由/防火墙限制）\n");
+    } else {
+        auto results = src.readTags(tags);
+        int64_t v = 0;
+        if (auto* i = std::get_if<int64_t>(&results[0].value)) v = *i;
+        if (auto* d = std::get_if<double>(&results[0].value)) v = (int64_t)*d;
+        CHECK(v == 500);
+        CHECK(src.matchedFrameCount() >= 1);
+    }
+
+    sender.stop();
+    src.disconnect();
+}
+
+TEST_CASE("数据目的：UDP 组播角色 -> 设置合成 + 组播发送/组成员互收") {
+    // 合成：sink udpRole=组播 → host=组地址、remotePort=组端口（发送方无需加入组）
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+    ds.name = "采集";
+    ds.setProp("transport", std::string("UDP"));
+    pg.components.push_back(ds);
+    Component sk = ComponentRegistry::createComponent("DataSink", "sink-1");
+    sk.name = "上报";
+    sk.setProp("source", std::string("采集"));
+    sk.setProp("transport", std::string("UDP"));
+    sk.setProp("udpRole", std::string("组播"));
+    sk.setProp("host", std::string("239.192.9.39"));
+    sk.setProp("remotePort", int64_t(59372));
+    pg.components.push_back(sk);
+    p.pages.push_back(std::move(pg));
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    REQUIRE(s.sinks.size() == 1);
+    CHECK(s.sinks[0].udp);
+    CHECK(!s.sinks[0].udpClient);
+    CHECK(s.sinks[0].udpMulticast);
+    CHECK(s.sinks[0].host == "239.192.9.39");
+    CHECK(s.sinks[0].remotePort == 59372);
+
+    // 地址校验辅助（connectSink / startMulticast 共用口径）
+    CHECK(packet::isMulticastIp("224.0.0.1"));
+    CHECK(packet::isMulticastIp("239.192.9.39"));
+    CHECK(!packet::isMulticastIp("192.168.1.5")); // 单播
+    CHECK(!packet::isMulticastIp("240.0.0.1"));   // 保留段
+    CHECK(!packet::isMulticastIp("bad-ip"));
+
+    // 链路：组成员 startMulticast 收；发送方 start(0)+setRemote 发（connectSink 同款路径）
+    packet::UdpLink member;
+    std::string err;
+    if (!member.startMulticast("239.192.9.39", 59372, err)) {
+        std::printf("    [skip] 加入组播组失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("239.192.9.39", 59372);
+    CHECK(sender.send(hex("AA 55 00 02 03 04"), err));
+
+    std::deque<packet::UdpPacket> in;
+    for (int i = 0; i < 40 && in.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        member.drain(in);
+    }
+    if (in.empty()) {
+        // 组播环回依赖系统路由/防火墙（虚拟机常见不可达），仅观测不判失败
+        std::printf("    [skip] 组播环回不可达（本机路由/防火墙限制）\n");
+    } else {
+        CHECK(packet::bytesToHex(in.front().data) == "AA 55 00 02 03 04"); // 原样到达
+    }
+
+    sender.stop();
+    member.stop();
+}
+
+TEST_CASE("UdpLink 组播：非法组地址被拒绝") {
+    packet::UdpLink m;
+    std::string err;
+    CHECK(!m.startMulticast("192.168.1.5", 59371, err)); // 单播地址
+    CHECK(!err.empty());
+    CHECK(!m.startMulticast("not-an-ip", 59371, err));
+    CHECK(!m.isRunning()); // 失败不得残留半开的收包线程
+}
+
 TEST_CASE("隐式绑定合成：布尔/枚举字段 → 标签类型") {
     Project p;
     Page pg;

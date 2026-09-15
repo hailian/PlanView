@@ -145,6 +145,8 @@ bool FrameDataSource::connect(std::string& err) {
         return udp_.start(cfg_.listenPort, err, cfg_.listenIp, matchPort);
     }
     if (cfg_.udp) {
+        if (cfg_.udpMulticast) // 组播：绑定组端口并加入组（host=组地址）
+            return udp_.startMulticast(cfg_.host, cfg_.localPort, err);
         if (cfg_.udpClient)
             return udp_.startClient(cfg_.host, cfg_.remotePort, err);
         return udp_.start(cfg_.localPort, err);

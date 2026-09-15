@@ -147,8 +147,9 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
             specBool("autoStart", "自动启动", false),
             specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听"}),
-            // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端
-            specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端"}),
+            // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端；
+            // 组播=绑定本地端口并加入 host 组播组（224~239 段，同机多消费者可共收）
+            specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端", "组播"}),
             // TCP 角色：客户端=连接远端；服务端=监听本地端口等待设备接入
             specEnum("tcpRole", "TCP角色", "客户端", {"客户端", "服务端"}),
             specString("host", "主机/目标IP", "127.0.0.1"),
@@ -201,7 +202,9 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             specString("source", "关联数据源", ""), // 数据源组件名（Inspector 动态下拉）
             specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口"}),
-            specEnum("udpRole", "UDP角色", "客户端", {"服务端", "客户端"}),
+            // UDP 角色：客户端=发往 host:remotePort；服务端=绑定 localPort 发往最近对端；
+            // 组播=发往 host(组地址 224~239):remotePort（发送方无需加入组）
+            specEnum("udpRole", "UDP角色", "客户端", {"服务端", "客户端", "组播"}),
             specEnum("tcpRole", "TCP角色", "客户端", {"客户端", "服务端"}),
             specString("host", "主机/目标IP", "127.0.0.1"),
             specInt("remotePort", "远端端口", 9002, 1, 65535),

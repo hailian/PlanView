@@ -824,13 +824,22 @@ void drawInspector(PlannerContext& ctx) {
         bool dsUdpClient =
             !dsListen && !dsTcp && !dsSerial &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
+        bool dsUdpMcast =
+            !dsListen && !dsTcp && !dsSerial &&
+            props::asString(c->propOr("udpRole", std::string("服务端"))) == "组播";
         bool dsTcpServer =
             !dsListen && dsTcp &&
             props::asString(c->propOr("tcpRole", std::string("客户端"))) == "服务端";
-        // 目标(host/remotePort) 仅客户端使用；本地端口(localPort) 仅服务端使用（监听无此项）
-        bool dsUseTarget = dsTcp ? !dsTcpServer : dsUdpClient;
+        // host：TCP/UDP 客户端目标 / UDP 组播的组地址（224~239 段）。组播端口项随组件而异：
+        // 数据源=localPort（bind + 加入组）；数据目的=remotePort（发往组地址，无需加入组）
+        bool mcastUseRemotePort = isSink;
+        bool dsUseHost = dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast);
+        bool dsUseRemotePort =
+            dsTcp ? !dsTcpServer : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort));
         bool dsUseLocalPort =
-            !dsListen && (dsTcp ? dsTcpServer : (!dsUdpClient && !dsSerial));
+            !dsListen && (dsTcp ? dsTcpServer
+                                : (!dsUdpClient && !dsSerial &&
+                                   !(dsUdpMcast && mcastUseRemotePort)));
         bool protoTlv =
             props::asString(c->propOr("framingMode", std::string("TLV"))) == "TLV";
         for (const auto& spec : info->properties) {
@@ -842,7 +851,8 @@ void drawInspector(PlannerContext& ctx) {
                 // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
                 if (spec.key == "udpRole" && (dsTcp || dsSerial || dsListen)) continue;
                 if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsListen)) continue;
-                if ((spec.key == "host" || spec.key == "remotePort") && !dsUseTarget) continue;
+                if (spec.key == "host" && !dsUseHost) continue;
+                if (spec.key == "remotePort" && !dsUseRemotePort) continue;
                 if (spec.key == "localPort" && !dsUseLocalPort) continue;
                 bool serialItem = spec.key == "serialPort" || spec.key == "baud" ||
                                   spec.key == "dataBits" || spec.key == "parity" ||

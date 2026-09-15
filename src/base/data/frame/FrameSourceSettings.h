@@ -39,6 +39,7 @@ struct FrameSinkSettings {
     bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
     bool serial = false;
     bool udpClient = false;          // 仅 UDP：客户端=发往 connect 的远端；服务端=发往最近对端
+    bool udpMulticast = false;       // 仅 UDP：组播=发往 host(组地址):remotePort（无需加入组）
     bool tcpClient = true;           // 仅 TCP：客户端=连接远端；服务端=监听，向接入方转发
     std::string host = "127.0.0.1";
     int remotePort = 9002;
@@ -56,6 +57,7 @@ struct FrameSourceSettings {
     bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
     bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
     bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)
+    bool udpMulticast = false;       // 仅 UDP：true=组播（bind 本地端口 + 加入 host 组播组）
     bool tcpClient = true;           // 仅 TCP：true=客户端(connect 远端)；false=服务端(listen 本地)
     std::string host = "127.0.0.1";  // TCP 客户端 / UDP 客户端连接目标
     int remotePort = 9001;           // TCP 客户端远端端口 / UDP 客户端目标端口
