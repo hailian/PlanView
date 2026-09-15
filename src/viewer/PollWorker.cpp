@@ -141,6 +141,20 @@ void PollWorker::run() {
             connected_ = true;
         }
 
+        // 0.5) 数据目的保活（TCP 服务端角色）：监听随运行保持——启动即监听，
+        // 不等首批转发帧（平台须能在数据到来前接入）；失败按 2s 退避重试，
+        // 手动停止数据源时随之下线（上文 sourceRunning_ 分支统一拆除）
+        {
+            auto nowMs = std::chrono::steady_clock::now();
+            for (auto& sk : sinks_) {
+                if (sk.cfg.serial || sk.cfg.udp || sk.cfg.tcpClient || sk.up) continue;
+                if (nowMs < sk.nextTry) continue;
+                std::string serr;
+                connectSink(sk, serr);
+                if (!sk.up) sk.nextTry = nowMs + std::chrono::seconds(2);
+            }
+        }
+
         // 1) 处理写队列（帧数据源只收不发：丢弃写请求，不影响连接状态）
         std::vector<std::pair<TagName, TagValue>> writes;
         {
@@ -268,6 +282,9 @@ void PollWorker::forwardFrames(const std::deque<std::vector<uint8_t>>& frames) {
                 continue; // 本批帧丢弃（转发不缓存）
             }
         }
+        // TCP 服务端角色：平台尚未接入——本批帧丢弃（尽力而为），**保持监听不拆链**。
+        // send 会因无连接失败，若按断链处理会反复拆掉监听，平台永远接不进来
+        if (!sk.cfg.serial && !sk.cfg.udp && sk.tcp->awaitingPeer()) continue;
         bool ok = true;
         for (const auto& f : frames) { // 队列元素即原始帧字节
             if (sk.cfg.serial)

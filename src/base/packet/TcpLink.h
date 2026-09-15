@@ -33,6 +33,8 @@ public:
     void disconnect();
     // 监听中即视为已接入（避免消费方反复重连）
     bool isConnected() const { return connected_ || listening_; }
+    // 服务端：监听中且尚无对端接入——发送无从投递，消费方应丢帧保监听而非拆链
+    bool awaitingPeer() const { return listening_ && !connected_; }
 
     // 发送原始字节（报文调试中手写 HEX）
     bool send(const std::vector<uint8_t>& data, std::string& err);

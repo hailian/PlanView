@@ -155,3 +155,139 @@ TEST_CASE("PollWorker：有标签时 UDP 服务端收包刷新标签值") {
     worker.stop();
     device.stop();
 }
+
+TEST_CASE("PollWorker：TCP 服务端数据目的（等平台接入后转发，接入前不拆监听）") {
+    const int srcPort = 59383, sinkPort = 59384;
+
+    // 工程：UDP 服务端数据源（autoStart）+ 数据目的 TCP 服务端（监听等平台接入）
+    ProjectSettings ps;
+    ps.frame.enabled = true;
+    ps.frame.udp = true;
+    ps.frame.localPort = srcPort;
+    ps.frame.autoStart = true;
+    ps.frame.framing.mode = packet::FrameMode::Tlv;
+    ps.frame.sourceName = "采集";
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    ps.frame.fields.push_back(f);
+    FrameSinkSettings sk;
+    sk.sourceName = "采集";
+    sk.tcpClient = false; // TCP 服务端：监听 sinkPort，向接入方转发
+    sk.localPort = sinkPort;
+    ps.frame.sinks.push_back(sk);
+
+    viewer::PollWorker worker;
+    worker.start(ps, {});
+    for (int i = 0; i < 40 && !worker.isConnected(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    REQUIRE(worker.isConnected());
+
+    packet::UdpLink device;
+    std::string err;
+    REQUIRE(device.start(0, err));
+    device.setRemote("127.0.0.1", srcPort);
+
+    // 平台接入前发 10 帧：按尽力而为丢弃，且监听不得被拆（回归点——
+    // 此前 send 无连接即失败，按断链拆监听，平台永远接不进来）
+    for (int i = 0; i < 10; ++i)
+        CHECK(device.send(hex("01 00 02 01 F4"), err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500)); // 跑过转发周期
+
+    packet::TcpLink platform;
+    REQUIRE(platform.connect("127.0.0.1", sinkPort, err)); // 监听仍在，可接入
+
+    // 探测转发链路就绪（acceptLoop 接入需时间）：循环发帧直到首字节到达
+    size_t got = 0;
+    std::deque<packet::TcpChunk> chunks;
+    for (int i = 0; i < 60 && got == 0; ++i) {
+        CHECK(device.send(hex("01 00 02 01 F4"), err));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        platform.drain(chunks);
+        for (const auto& c : chunks) got += c.data.size();
+        chunks.clear();
+    }
+    REQUIRE(got > 0); // 平台已接入并收到转发
+
+    // 计量段：等在途探测帧结算后重置，再发 20 帧应全量到达（每帧 5B）
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    platform.drain(chunks);
+    chunks.clear();
+    got = 0;
+    for (int i = 0; i < 20; ++i)
+        CHECK(device.send(hex("01 00 02 01 F4"), err));
+    for (int i = 0; i < 100 && got < 100; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        platform.drain(chunks);
+        for (const auto& c : chunks) got += c.data.size();
+        chunks.clear();
+    }
+    CHECK(got >= 100);   // 接入后全量转发
+    CHECK(got % 5 == 0); // 帧界完整（TCP 字节流按整帧到达）
+
+    platform.disconnect();
+    device.stop();
+    worker.stop();
+}
+
+TEST_CASE("PollWorker：TCP 服务端数据目的随启动即监听（平台先接入，数据后到）") {
+    const int srcPort = 59385, sinkPort = 59386;
+
+    ProjectSettings ps;
+    ps.frame.enabled = true;
+    ps.frame.udp = true;
+    ps.frame.localPort = srcPort;
+    ps.frame.autoStart = true;
+    ps.frame.framing.mode = packet::FrameMode::Tlv;
+    ps.frame.sourceName = "采集";
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    ps.frame.fields.push_back(f);
+    FrameSinkSettings sk;
+    sk.sourceName = "采集";
+    sk.tcpClient = false; // TCP 服务端
+    sk.localPort = sinkPort;
+    ps.frame.sinks.push_back(sk);
+
+    viewer::PollWorker worker;
+    worker.start(ps, {});
+    for (int i = 0; i < 40 && !worker.isConnected(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    REQUIRE(worker.isConnected());
+
+    // 此前任何设备帧未发：服务端数据目的必须已在监听（回归点——
+    // 监听原是懒建，首批转发帧到达才 listen，平台先接入会被拒）
+    packet::TcpLink platform;
+    std::string err;
+    REQUIRE(platform.connect("127.0.0.1", sinkPort, err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300)); // 等 accept 完成
+
+    // 数据后到：设备发 20 帧，平台应全量收到（每帧 5B）
+    packet::UdpLink device;
+    REQUIRE(device.start(0, err));
+    device.setRemote("127.0.0.1", srcPort);
+    for (int i = 0; i < 20; ++i)
+        CHECK(device.send(hex("01 00 02 01 F4"), err));
+
+    size_t got = 0;
+    std::deque<packet::TcpChunk> chunks;
+    for (int i = 0; i < 100 && got < 100; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        platform.drain(chunks);
+        for (const auto& c : chunks) got += c.data.size();
+        chunks.clear();
+    }
+    std::printf("    [info] 平台收到 %zu/100 字节\n", got);
+    CHECK(got == 100);
+
+    platform.disconnect();
+    device.stop();
+    worker.stop();
+}
