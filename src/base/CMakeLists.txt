@@ -20,6 +20,8 @@ add_library(pv_base STATIC
     packet/PcapLink.cpp
     packet/UsbApi.cpp
     packet/UsbLink.cpp
+    packet/VisaApi.cpp
+    packet/VisaLink.cpp
     render/ComponentRenderer.cpp
     render/TextureCache.cpp
     render/widgets/Widgets.cpp

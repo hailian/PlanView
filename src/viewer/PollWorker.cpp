@@ -121,6 +121,7 @@ void PollWorker::run() {
                 sk.up = false;
                 if (sk.cfg.serial) sk.serial->close();
                 else if (sk.cfg.usb) sk.usb->stop();
+                else if (sk.cfg.visa) sk.visa->stop();
                 else if (sk.cfg.udp) sk.udp->stop();
                 else sk.tcp->disconnect();
             }
@@ -148,8 +149,9 @@ void PollWorker::run() {
         {
             auto nowMs = std::chrono::steady_clock::now();
             for (auto& sk : sinks_) {
-                if (sk.cfg.serial || sk.cfg.usb || sk.cfg.udp || sk.cfg.tcpClient || sk.up)
-                    continue; // USB/串口/UDP 与 TCP 客户端懒连接：随首批转发帧再建
+                if (sk.cfg.serial || sk.cfg.usb || sk.cfg.visa || sk.cfg.udp ||
+                    sk.cfg.tcpClient || sk.up)
+                    continue; // USB/VISA/串口/UDP 与 TCP 客户端懒连接：随首批转发帧再建
                 if (nowMs < sk.nextTry) continue;
                 std::string serr;
                 connectSink(sk, serr);
@@ -269,6 +271,11 @@ void PollWorker::connectSink(SinkLink& sk, std::string& err) {
         if (!sk.usb) sk.usb = std::make_unique<packet::UsbLink>();
         sk.up = sk.usb->start(k.usbDevice, k.usbInterface, std::string(), k.usbEpOut,
                               /*requireIn=*/false, /*requireOut=*/true, err);
+    } else if (k.visa) {
+        // VISA 转发：viWrite 发往仪器（只发不收；未装 VISA 运行时/地址无效时 err
+        // 带提示，走通用 2s 退避重试）
+        if (!sk.visa) sk.visa = std::make_unique<packet::VisaLink>();
+        sk.up = sk.visa->start(k.visaAddress, /*requireRecv=*/false, err);
     } else {
         if (!sk.tcp) sk.tcp = std::make_unique<packet::TcpLink>();
         sk.up = k.tcpClient ? sk.tcp->connect(k.host, k.remotePort, err)
@@ -292,13 +299,17 @@ void PollWorker::forwardFrames(const std::deque<std::vector<uint8_t>>& frames) {
         }
         // TCP 服务端角色：平台尚未接入——本批帧丢弃（尽力而为），**保持监听不拆链**。
         // send 会因无连接失败，若按断链处理会反复拆掉监听，平台永远接不进来
-        if (!sk.cfg.serial && !sk.cfg.usb && !sk.cfg.udp && sk.tcp->awaitingPeer()) continue;
+        if (!sk.cfg.serial && !sk.cfg.usb && !sk.cfg.visa && !sk.cfg.udp &&
+            sk.tcp->awaitingPeer())
+            continue;
         bool ok = true;
         for (const auto& f : frames) { // 队列元素即原始帧字节
             if (sk.cfg.serial)
                 ok = sk.serial->send(f, err) && ok;
             else if (sk.cfg.usb)
                 ok = sk.usb->send(f, err) && ok;
+            else if (sk.cfg.visa)
+                ok = sk.visa->send(f, err) && ok;
             else if (sk.cfg.udp)
                 ok = sk.udp->send(f, err) && ok;
             else
@@ -310,6 +321,7 @@ void PollWorker::forwardFrames(const std::deque<std::vector<uint8_t>>& frames) {
             sk.nextTry = now + std::chrono::seconds(2);
             if (sk.cfg.serial) sk.serial->close();
             else if (sk.cfg.usb) sk.usb->stop();
+            else if (sk.cfg.visa) sk.visa->stop();
             else if (sk.cfg.udp) sk.udp->stop();
             else sk.tcp->disconnect();
         }

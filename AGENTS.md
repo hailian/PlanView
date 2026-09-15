@@ -16,7 +16,7 @@ PlanView — Windows 专用 HMI 组态软件套件（C++20 / Dear ImGui v1.92.9b
 
 ## 构建与测试
 
-依赖（imgui / nlohmann/json）经 CMake FetchContent 拉取，**首次配置需联网**（默认 gitee 镜像，可 `-D PV_IMGUI_REPO=...` 覆盖）。需要 VS 2022（含 C++ 桌面开发与 CMake 组件），`scripts/build.cmd` 会自动调 vcvars64。另：数据源「监听-镜像抓包」（交换机 SPAN 场景）依赖的 Npcap 是**运行时可选依赖**（`LoadLibrary` 动态加载 `wpcap.dll`，见 `src/base/packet/NpcapApi.*` 与 `PcapLink.*`），**构建与测试不需要**装 Npcap SDK；未装驱动的机器上相关测试自动 `[skip]`。数据源/数据目的「USB」传输依赖的 libusb-1.0.dll 同为**运行时可选依赖**（`LoadLibrary` 动态加载，见 `src/base/packet/UsbApi.*` 与 `UsbLink.*`），**构建与测试不需要** libusb SDK；未放置 DLL/无设备的机器上相关测试自动 `[skip]`。
+依赖（imgui / nlohmann/json）经 CMake FetchContent 拉取，**首次配置需联网**（默认 gitee 镜像，可 `-D PV_IMGUI_REPO=...` 覆盖）。需要 VS 2022（含 C++ 桌面开发与 CMake 组件），`scripts/build.cmd` 会自动调 vcvars64。另：数据源「监听-镜像抓包」（交换机 SPAN 场景）依赖的 Npcap 是**运行时可选依赖**（`LoadLibrary` 动态加载 `wpcap.dll`，见 `src/base/packet/NpcapApi.*` 与 `PcapLink.*`），**构建与测试不需要**装 Npcap SDK；未装驱动的机器上相关测试自动 `[skip]`。数据源/数据目的「USB」传输依赖的 libusb-1.0.dll 同为**运行时可选依赖**（`LoadLibrary` 动态加载，见 `src/base/packet/UsbApi.*` 与 `UsbLink.*`），**构建与测试不需要** libusb SDK；未放置 DLL/无设备的机器上相关测试自动 `[skip]`。「VISA」传输（USBTMC/GPIB/以太网仪器）依赖的 VISA 运行时（visa64.dll/visa32.dll，NI-VISA / Keysight IO Libraries 等安装）亦为**运行时可选依赖**（见 `src/base/packet/VisaApi.*` 与 `VisaLink.*`），**构建与测试不需要** VISA SDK；未装运行时/无仪器的机器上相关测试自动 `[skip]`。
 
 ```bat
 :: cmd / VS 开发者环境

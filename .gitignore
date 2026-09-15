@@ -1,3 +1,4 @@
+.zcode/
 llm_config.json
 # Build output
 out/

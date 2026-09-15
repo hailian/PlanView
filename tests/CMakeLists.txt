@@ -8,6 +8,7 @@ add_executable(pv_tests
     test_FrameSource.cpp
     test_PcapListen.cpp
     test_UsbLink.cpp
+    test_VisaLink.cpp
     test_Align.cpp
     test_AiProto.cpp
     test_Perf.cpp

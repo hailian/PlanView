@@ -553,6 +553,7 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::string protocol = props::asString(c.propOr("protocol", std::string()));
     std::string group = props::asString(c.propOr("group", std::string()));
     std::string usbDevice = props::asString(c.propOr("usbDevice", std::string()));
+    std::string visaAddress = props::asString(c.propOr("visaAddress", std::string()));
     std::string assocText = !group.empty() ? "[组] " + group : protocol; // 组优先展示
 
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
@@ -580,6 +581,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
     } else if (transport == "USB") { // "USB 0483:5740"
         std::snprintf(line, sizeof(line), "USB %s",
                       usbDevice.empty() ? "(未选设备)" : usbDevice.c_str());
+    } else if (transport == "VISA") { // "VISA USB0::...::INSTR"（超长自然截断）
+        std::snprintf(line, sizeof(line), "VISA %s",
+                      visaAddress.empty() ? "(未填地址)" : visaAddress.c_str());
     } else if (transport == "TCP") {
         if (tcpRole == "服务端")
             std::snprintf(line, sizeof(line), "TCP服务端 :%lld", (long long)localPort);
@@ -634,6 +638,7 @@ void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
     std::string serialPort = props::asString(c.propOr("serialPort", std::string("COM1")));
     int64_t baud = props::asInt(c.propOr("baud", int64_t(9600)));
     std::string usbDevice = props::asString(c.propOr("usbDevice", std::string()));
+    std::string visaAddress = props::asString(c.propOr("visaAddress", std::string()));
     std::string source = props::asString(c.propOr("source", std::string()));
 
     dl->AddText(font(), 15.0f * scale, ImVec2(r.Min.x + 14.0f * scale, r.Min.y + 8.0f * scale),
@@ -645,6 +650,9 @@ void drawDataSink(ImDrawList* dl, const ScreenRect& r, const Component& c,
     } else if (transport == "USB") {
         std::snprintf(line, sizeof(line), "-> USB %s",
                       usbDevice.empty() ? "(未选设备)" : usbDevice.c_str());
+    } else if (transport == "VISA") {
+        std::snprintf(line, sizeof(line), "-> VISA %s",
+                      visaAddress.empty() ? "(未填地址)" : visaAddress.c_str());
     } else if (transport == "TCP") {
         if (tcpRole == "服务端")
             std::snprintf(line, sizeof(line), "-> TCP服务端 :%lld", (long long)localPort);

@@ -102,6 +102,8 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     s.serial = transport == "串口";
     // 传输=USB：libusb/WinUSB 设备字节流（收帧与串口同路拆帧）
     s.usb = transport == "USB";
+    // 传输=VISA：经 VISA 运行时接 USBTMC/GPIB/以太网仪器（字节流，与串口同路拆帧）
+    s.visa = transport == "VISA";
     // 传输=自发：本地模拟设备——无网络无端口，生成器周期产帧直接驱动自身解析
     s.autoSend = transport == "自发";
     if (s.autoSend)
@@ -111,7 +113,7 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     s.udpClient = s.udp && udpRole == "客户端";
     // 组播角色：host=组地址（224~239 段），localPort=组端口（bind + 加入组）
     s.udpMulticast = s.udp && udpRole == "组播";
-    s.tcpClient = !s.udp && !s.serial && !s.usb && !s.listen && !s.autoSend &&
+    s.tcpClient = !s.udp && !s.serial && !s.usb && !s.visa && !s.listen && !s.autoSend &&
                   props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
@@ -138,6 +140,8 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
         s.usbEpIn = props::asString(ds->propOr("usbEpIn", s.usbEpIn));
         s.usbEpOut = props::asString(ds->propOr("usbEpOut", s.usbEpOut));
     }
+    if (s.visa)
+        s.visaAddress = props::asString(ds->propOr("visaAddress", s.visaAddress));
 
     // 数据目的组件：把生效数据源收到的原始帧转发出去（按 source 属性关联数据源名）。
     // 传输参数解析与数据源同构；仅 sourceName 匹配生效数据源的 sink 在运行器生效
@@ -152,13 +156,14 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
             k.udp = tr == "UDP";
             k.serial = tr == "串口";
             k.usb = tr == "USB";
+            k.visa = tr == "VISA";
             std::string skUdpRole =
                 props::asString(c.propOr("udpRole", std::string("客户端")));
             k.udpClient = k.udp && skUdpRole == "客户端";
             // 组播：host=组地址（224~239 段）、remotePort=组端口（发送方无需加入组）
             k.udpMulticast = k.udp && skUdpRole == "组播";
             k.tcpClient =
-                !k.usb &&
+                !k.usb && !k.visa &&
                 props::asString(c.propOr("tcpRole", std::string("客户端"))) != "服务端";
             k.host = props::asString(c.propOr("host", k.host));
             k.remotePort = (int)props::asInt(c.propOr("remotePort", int64_t(k.remotePort)));
@@ -174,6 +179,8 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
                     props::asInt(c.propOr("usbInterface", int64_t(k.usbInterface))), 0, 255);
                 k.usbEpOut = props::asString(c.propOr("usbEpOut", k.usbEpOut));
             }
+            if (k.visa) // VISA 转发：viWrite 发往仪器（地址直接复用数据源侧写法）
+                k.visaAddress = props::asString(c.propOr("visaAddress", k.visaAddress));
             s.sinks.push_back(std::move(k));
         }
 

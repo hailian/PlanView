@@ -17,6 +17,7 @@
 #include "base/model/Project.h"
 #include "base/packet/SerialLink.h"
 #include "base/packet/UsbLink.h"
+#include "base/packet/VisaLink.h"
 
 namespace pv::viewer {
 
@@ -62,6 +63,7 @@ private:
         std::unique_ptr<packet::UdpLink> udp;
         std::unique_ptr<packet::SerialLink> serial;
         std::unique_ptr<packet::UsbLink> usb;
+        std::unique_ptr<packet::VisaLink> visa;
         bool up = false;          // 链路已建立
         std::chrono::steady_clock::time_point nextTry{}; // 断线后的下次重试时刻
     };

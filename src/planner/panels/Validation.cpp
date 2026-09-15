@@ -1,6 +1,7 @@
 #include "planner/panels/Validation.h"
 
 #include "base/packet/UsbLink.h" // parseDeviceToken（USB 设备标识校验）
+#include "base/packet/VisaLink.h" // validateVisaAddress（VISA 地址校验）
 #include "imgui.h"
 #include "planner/PlannerContext.h"
 
@@ -123,6 +124,16 @@ void drawValidation(PlannerContext& ctx) {
                 else if (!packet::parseDeviceToken(dev, vid, pid, serial, perr))
                     issues.push_back({"USB 设备标识非法（" + perr + "）", firstDs->id, true});
             }
+
+            // VISA 传输须填写合法地址（VISA 运行时是否安装由运行器连接时报错提示）
+            if (props::asString(firstDs->propOr("transport", std::string("UDP"))) == "VISA") {
+                std::string addr =
+                    props::asString(firstDs->propOr("visaAddress", std::string()));
+                std::string verr;
+                if (!packet::validateVisaAddress(addr, verr))
+                    issues.push_back({"VISA 传输未填写 VISA 地址（运行器无法启动收包）",
+                                      firstDs->id, true});
+            }
         }
 
         // 数据源关联的协议组须存在；组内成员协议须存在
@@ -181,6 +192,13 @@ void drawValidation(PlannerContext& ctx) {
                         issues.push_back({"USB 转发未选择 USB 设备（不转发）", c.id, true});
                     else if (!packet::parseDeviceToken(dev, vid, pid, serial, perr))
                         issues.push_back({"USB 设备标识非法（" + perr + "）", c.id, true});
+                }
+                // VISA 转发须填写合法地址（与数据源同规则）
+                if (props::asString(c.propOr("transport", std::string("TCP"))) == "VISA") {
+                    std::string addr = props::asString(c.propOr("visaAddress", std::string()));
+                    std::string verr;
+                    if (!packet::validateVisaAddress(addr, verr))
+                        issues.push_back({"VISA 转发未填写 VISA 地址（不转发）", c.id, true});
                 }
             }
     }

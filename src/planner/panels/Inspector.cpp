@@ -8,6 +8,7 @@
 #include "base/packet/PacketSpec.h"
 #include "base/packet/UsbApi.h"
 #include "base/packet/UsbLink.h" // makeDeviceToken
+#include "base/packet/VisaApi.h" // listResources
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include "planner/PlannerContext.h"
@@ -614,6 +615,31 @@ void drawUsbDeviceSelector(Component& c, PlannerContext& ctx) {
     }
 }
 
+// 传输=VISA 时的「枚举仪器」动态下拉：运行时 viFindRsrc 列出本机 INSTR 资源，
+// 点击回填 visaAddress（地址以属性框手工输入为主——TCPIP/SOCKET 等地址常手敲，
+// 下拉只是录入辅助）。未装 VISA 运行时时显示安装提示
+void drawVisaResourceSelector(Component& c, PlannerContext& ctx) {
+    std::string err;
+    auto resources = packet::visa::listResources(err);
+    if (resources.empty()) {
+        ImGui::TextColored(ImVec4(1, 0.7f, 0.45f, 1), "枚举仪器: %s", err.c_str());
+        return;
+    }
+    std::string cur = props::asString(c.propOr("visaAddress", std::string()));
+    std::string preview = cur.empty() ? std::string("(选择仪器)") : cur;
+    if (ImGui::BeginCombo("枚举仪器", preview.c_str())) {
+        for (const auto& r : resources) {
+            bool sel = r == cur;
+            if (ImGui::Selectable(r.c_str(), sel) && !sel) {
+                ctx.doc.commit("选择VISA仪器");
+                c.setProp("visaAddress", r);
+            }
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+}
+
 // 数据目的组件的「关联数据源」动态下拉：候选 = 工程内全部数据源组件名（跨页）
 void drawSourceSelector(Component& c, PlannerContext& ctx) {
     std::string cur = props::asString(c.propOr("source", std::string()));
@@ -868,15 +894,17 @@ void drawInspector(PlannerContext& ctx) {
         bool dsSelfSend = !isSink && dsTransport == "自发";
         // USB（源/目的通用）：libusb/WinUSB 设备——无角色/地址/端口概念，仅设备/接口/端点
         bool dsUsb = dsTransport == "USB";
+        // VISA（源/目的通用）：USBTMC/GPIB/以太网仪器——无角色/地址/端口概念，仅 VISA 地址
+        bool dsVisa = dsTransport == "VISA";
         // 监听方式=镜像抓包：Npcap 混杂模式（交换机 SPAN 场景），需选抓包网卡
         bool dsListenPcap =
             dsListen && props::asString(
                             c->propOr("listenMode", std::string("本机端口"))) == "镜像抓包";
         bool dsUdpClient =
-            !dsListen && !dsTcp && !dsSerial && !dsUsb &&
+            !dsListen && !dsTcp && !dsSerial && !dsUsb && !dsVisa &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "客户端";
         bool dsUdpMcast =
-            !dsListen && !dsTcp && !dsSerial && !dsUsb &&
+            !dsListen && !dsTcp && !dsSerial && !dsUsb && !dsVisa &&
             props::asString(c->propOr("udpRole", std::string("服务端"))) == "组播";
         bool dsTcpServer =
             !dsListen && dsTcp &&
@@ -884,12 +912,13 @@ void drawInspector(PlannerContext& ctx) {
         // host：TCP/UDP 客户端目标 / UDP 组播的组地址（224~239 段）。组播端口项随组件而异：
         // 数据源=localPort（bind + 加入组）；数据目的=remotePort（发往组地址，无需加入组）
         bool mcastUseRemotePort = isSink;
-        bool dsUseHost = !dsUsb && (dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast));
+        bool dsUseHost =
+            !dsUsb && !dsVisa && (dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast));
         bool dsUseRemotePort =
-            !dsUsb && (dsTcp ? !dsTcpServer
-                             : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort)));
+            !dsUsb && !dsVisa &&
+            (dsTcp ? !dsTcpServer : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort)));
         bool dsUseLocalPort =
-            !dsListen && !dsUsb &&
+            !dsListen && !dsUsb && !dsVisa &&
             (dsTcp ? dsTcpServer
                    : (!dsUdpClient && !dsSerial && !(dsUdpMcast && mcastUseRemotePort)));
         bool protoTlv =
@@ -901,10 +930,10 @@ void drawInspector(PlannerContext& ctx) {
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
                 // 串口/USB 无角色/端口概念，各只显示自己的一组设备参数
-                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsUsb || dsListen ||
-                                              dsSelfSend))
+                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsUsb || dsVisa ||
+                                              dsListen || dsSelfSend))
                     continue;
-                if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsUsb || dsListen))
+                if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsUsb || dsVisa || dsListen))
                     continue;
                 if (spec.key == "host" && (!dsUseHost || dsSelfSend)) continue;
                 if (spec.key == "remotePort" && (!dsUseRemotePort || dsSelfSend)) continue;
@@ -917,6 +946,7 @@ void drawInspector(PlannerContext& ctx) {
                 bool usbItem = spec.key == "usbInterface" || spec.key == "usbEpIn" ||
                                spec.key == "usbEpOut";
                 if (usbItem && !dsUsb) continue; // 仅 USB
+                if (spec.key == "visaAddress" && !dsVisa) continue; // 仅 VISA（普通文本编辑）
                 if (spec.key == "usbDevice") { // 动态下拉（运行时 libusb 枚举）
                     if (!dsUsb) continue;
                     drawUsbDeviceSelector(*c, ctx);
@@ -948,6 +978,8 @@ void drawInspector(PlannerContext& ctx) {
             commitOnEdit(spec, changed, ctx);
             if (changed) c->setProp(spec.key, v);
         }
+        if (isComm && dsVisa)
+            drawVisaResourceSelector(*c, ctx); // VISA：属性框手敲地址 + 枚举下拉回填
         if (isDs)
             drawProtocolSelector(*c, ctx); // 关联协议/组（单一下拉二选一）
         if (c->typeId == "ProtocolGroup")

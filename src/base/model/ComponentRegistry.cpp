@@ -146,7 +146,8 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
             specBool("autoStart", "自动启动", false),
-            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听", "自发", "USB"}),
+            specEnum("transport", "传输方式", "UDP",
+                     {"UDP", "TCP", "串口", "监听", "自发", "USB", "VISA"}),
             // 自发（本地模拟设备）：仅配周期——按关联协议格式周期性产帧直接驱动自身解析
             //（无网络、无端口），字段值按类型确定性递增（整数 0..max 环回/枚举遍历/字符串 a..z）
             specInt("autoSendMs", "发送周期(ms)", 1000, 20, 60000),
@@ -178,6 +179,10 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specInt("usbInterface", "USB接口号", 0, 0, 255),
             specString("usbEpIn", "IN端点(hex)", ""),  // 空 = 自动选首个批量/中断 IN
             specString("usbEpOut", "OUT端点(hex)", ""), // 空 = 自动选
+            // VISA 参数（仅传输=VISA 时显示）：经 VISA 运行时统一接 USBTMC/GPIB/以太网
+            // 仪器（需装 NI-VISA / Keysight IO Libraries 等，未装时连接报安装提示）。
+            // 地址以手工输入为主，属性下方另有「枚举仪器」动态下拉回填
+            specString("visaAddress", "VISA地址", ""), // 如 TCPIP0::192.168.1.5::inst0::INSTR
             specString("protocol", "关联协议/组", ""), // 协议配置或协议组组件名（统一动态下拉）
         };
         t.push_back(std::move(i));
@@ -210,7 +215,7 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         ComponentTypeInfo i{"DataSink", "数据目的", "通信", {170, 84}, {}};
         i.properties = {
             specString("source", "关联数据源", ""), // 数据源组件名（Inspector 动态下拉）
-            specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口", "USB"}),
+            specEnum("transport", "传输方式", "TCP", {"UDP", "TCP", "串口", "USB", "VISA"}),
             // UDP 角色：客户端=发往 host:remotePort；服务端=绑定 localPort 发往最近对端；
             // 组播=发往 host(组地址 224~239):remotePort（发送方无需加入组）
             specEnum("udpRole", "UDP角色", "客户端", {"服务端", "客户端", "组播"}),
@@ -227,6 +232,8 @@ std::vector<ComponentTypeInfo> builtinTypes() {
             specString("usbDevice", "USB设备", ""), // 动态下拉（运行时 libusb 枚举）
             specInt("usbInterface", "USB接口号", 0, 0, 255),
             specString("usbEpOut", "OUT端点(hex)", ""), // 空 = 自动选
+            // VISA 转发参数（仅传输=VISA 时显示）：viWrite 发往仪器（地址与数据源同构）
+            specString("visaAddress", "VISA地址", ""),
         };
         t.push_back(std::move(i));
     }

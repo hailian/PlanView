@@ -155,6 +155,9 @@ bool FrameDataSource::connect(std::string& err) {
         // 未放置 libusb-1.0.dll 时 err 带放置提示，交由 PollWorker 退避重试）
         ok = usb_.start(cfg_.usbDevice, cfg_.usbInterface, cfg_.usbEpIn, cfg_.usbEpOut,
                         /*requireIn=*/true, /*requireOut=*/false, err);
+    else if (cfg_.visa) // VISA：经 VISA 运行时打开仪器（字节流，与串口同路拆帧；
+        // 未装 NI-VISA/Keysight 等运行时时 err 带安装提示，交由 PollWorker 退避重试）
+        ok = visa_.start(cfg_.visaAddress, /*requireRecv=*/true, err);
     else if (cfg_.listen) { // 监听：三元组 dip/dport/协议 过滤，绑定端口即 dport
         if (cfg_.listenPcap) // 镜像抓包：BPF 过滤任一方向命中（未装 Npcap 时 err 带安装提示）
             ok = pcap_.start(cfg_.listenNic,
@@ -233,6 +236,7 @@ void FrameDataSource::disconnect() {
     tcp_.disconnect();
     serial_.close();
     usb_.stop();
+    visa_.stop();
     pcap_.stop();
     flows_.reset();
     std::lock_guard<std::mutex> lock(mutex_);
@@ -243,6 +247,7 @@ bool FrameDataSource::isConnected() const {
     if (cfg_.autoSend) return sending_; // 传输=自发：产帧线程在跑即"已连接"
     if (cfg_.serial) return serial_.isOpen();
     if (cfg_.usb) return usb_.isRunning();
+    if (cfg_.visa) return visa_.isRunning();
     if (cfg_.listen) {
         if (cfg_.listenPcap) return pcap_.isRunning();
         return cfg_.listenTcp ? tcp_.isConnected() : udp_.isRunning();
@@ -290,6 +295,13 @@ void FrameDataSource::pumpFrames() {
     } else if (cfg_.usb) { // USB：字节流（bulk 不保报文边界），与串口同路拆帧
         std::deque<packet::TcpChunk> in;
         usb_.drain(in);
+        while (!in.empty()) {
+            splitter_.feed(in.front().data.data(), in.front().data.size(), frames);
+            in.pop_front();
+        }
+    } else if (cfg_.visa) { // VISA：字节流（总线/实现差异不保边界），与串口同路拆帧
+        std::deque<packet::TcpChunk> in;
+        visa_.drain(in);
         while (!in.empty()) {
             splitter_.feed(in.front().data.data(), in.front().data.size(), frames);
             in.pop_front();
