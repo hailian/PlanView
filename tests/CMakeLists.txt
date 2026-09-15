@@ -10,6 +10,7 @@ add_executable(pv_tests
     test_Align.cpp
     test_AiProto.cpp
     test_Perf.cpp
+    test_Components.cpp
 )
 target_link_libraries(pv_tests PRIVATE pv_base)
 target_include_directories(pv_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -235,3 +235,87 @@ TEST_CASE("数据质量: 通讯丢失不触发告警") {
     CHECK(engine.activeAlarmCount() == 1);  // 锁存保持；数据坏不触发新告警
     CHECK(engine.goodTagCount() == 0);
 }
+
+TEST_CASE("联动: SetTagValue 写标签 + Pulse 脉冲 + ToggleVisible 直连 + 失效目标不崩") {
+    Project p = makeRuntimeProject();
+    // Click -> 写标签 tagCmd=123（写回排队，由 viewer 送 worker）
+    LinkageRule wt;
+    wt.id = "a-wt";
+    wt.source = "comp-b";
+    wt.event = LinkageEvent::Click;
+    wt.action = LinkageAction::SetTagValue;
+    wt.param = "tagCmd";
+    wt.value = 123.0;
+    p.associations.push_back(std::move(wt));
+    // Click -> comp-l 脉冲高亮（400ms 到期表由渲染消费，引擎侧执行不崩即可）
+    LinkageRule pulse;
+    pulse.id = "a-pulse";
+    pulse.source = "comp-b";
+    pulse.event = LinkageEvent::Click;
+    pulse.target = "comp-l";
+    pulse.action = LinkageAction::Pulse;
+    p.associations.push_back(std::move(pulse));
+    // Click -> 直连翻转 comp-l2 可见性
+    LinkageRule tv;
+    tv.id = "a-tv";
+    tv.source = "comp-b";
+    tv.event = LinkageEvent::Click;
+    tv.target = "comp-l2";
+    tv.action = LinkageAction::ToggleVisible;
+    p.associations.push_back(std::move(tv));
+    // 失效目标：指向不存在的组件（工程编辑中途态），不得崩溃
+    LinkageRule ghost;
+    ghost.id = "a-ghost";
+    ghost.source = "comp-b";
+    ghost.event = LinkageEvent::Click;
+    ghost.target = "comp-不存在";
+    ghost.action = LinkageAction::SetProperty;
+    ghost.param = "isOn";
+    ghost.value = true;
+    p.associations.push_back(std::move(ghost));
+
+    RuntimeEngine engine(p);
+    engine.tick(std::chrono::steady_clock::now());
+    bool visBefore = p.findComponent("comp-l2")->visible;
+
+    engine.raiseComponentEvent("comp-b", LinkageEvent::Click);
+
+    auto actions = engine.drainActions();
+    bool hasWrite = false;
+    for (const auto& a : actions)
+        if (a.kind == PendingAction::Kind::WriteTag && a.target == "tagCmd") {
+            hasWrite = true;
+            CHECK(std::get<double>(a.value) == 123.0);
+        }
+    CHECK(hasWrite);
+    CHECK(p.findComponent("comp-l2")->visible == !visBefore); // 直连翻转生效
+    // Pulse 与失效目标：不崩溃且不影响其余规则即通过
+}
+
+TEST_CASE("联动: 三级链式传播（Click → 灯1 → 灯2 → 灯3）") {
+    Project p;
+    p.pages.push_back(Page{});
+    p.pages.back().id = "page-1";
+    p.pages.back().components.push_back(ComponentRegistry::createComponent("Button", "btn"));
+    for (int i = 1; i <= 3; ++i)
+        p.pages.back().components.push_back(
+            ComponentRegistry::createComponent("Lamp", "lamp" + std::to_string(i)));
+    // btn.Click -> lamp1.isOn=true；lamp1 值变化 -> lamp2；lamp2 -> lamp3（均 SetProperty）
+    for (int i = 0; i < 3; ++i) {
+        LinkageRule l;
+        l.id = "chain" + std::to_string(i);
+        l.source = i == 0 ? "btn" : "lamp" + std::to_string(i);
+        l.event = i == 0 ? LinkageEvent::Click : LinkageEvent::ValueChanged;
+        l.target = "lamp" + std::to_string(i + 1);
+        l.action = LinkageAction::SetProperty;
+        l.param = "isOn";
+        l.value = true;
+        p.associations.push_back(std::move(l));
+    }
+    RuntimeEngine engine(p);
+    engine.tick(std::chrono::steady_clock::now());
+    engine.raiseComponentEvent("btn", LinkageEvent::Click);
+    for (int i = 1; i <= 3; ++i)
+        CHECK(props::asBool(p.findComponent("lamp" + std::to_string(i))->propOr("isOn", false)) ==
+              true);
+}

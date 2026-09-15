@@ -1462,3 +1462,187 @@ TEST_CASE("隐式绑定合成：布尔/枚举字段 → 标签类型") {
     REQUIRE(ts != nullptr);
     CHECK(ts->type == TagDataType::String); // 枚举 → 字符串标签（名称文本）
 }
+
+TEST_CASE("多数据源/多数据目的：工程级合成（生效源=首个，sink 全量进列表）") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+
+    // 两个数据源：采集A（UDP，画布首个 → 生效）与采集B（TCP）
+    Component a = ComponentRegistry::createComponent("DataSource", "ds-a");
+    a.name = "采集A";
+    a.setProp("transport", std::string("UDP"));
+    pg.components.push_back(a);
+    Component b = ComponentRegistry::createComponent("DataSource", "ds-b");
+    b.name = "采集B";
+    b.setProp("transport", std::string("TCP"));
+    b.setProp("tcpRole", std::string("服务端"));
+    b.setProp("localPort", int64_t(6100));
+    pg.components.push_back(b);
+
+    // 三个数据目的 + 一个未关联：上传1→A（UDP 客户端）、分发→A（UDP 组播）、
+    // 回报→B（TCP 客户端，关联非生效源——合成保留、运行时不转发）
+    auto sink = [&](const char* id, const char* name, const char* src,
+                    const char* transport, const char* udpRole, const char* host, int port) {
+        Component s = ComponentRegistry::createComponent("DataSink", id);
+        s.name = name;
+        if (src) s.setProp("source", std::string(src));
+        s.setProp("transport", std::string(transport));
+        if (udpRole) s.setProp("udpRole", std::string(udpRole));
+        if (host) s.setProp("host", std::string(host));
+        s.setProp("remotePort", int64_t(port));
+        pg.components.push_back(s);
+    };
+    sink("sk-1", "上传1", "采集A", "UDP", "客户端", "10.0.0.9", 7101);
+    sink("sk-2", "分发", "采集A", "UDP", "组播", "239.192.9.40", 7102);
+    sink("sk-3", "回报", "采集B", "TCP", nullptr, "10.0.0.10", 7103);
+    sink("sk-4", "孤儿", nullptr, "TCP", nullptr, nullptr, 7104);
+    p.pages.push_back(std::move(pg));
+
+    FrameSourceSettings s = frameSettingsFromProject(p);
+    CHECK(s.enabled);
+    CHECK(s.sourceName == "采集A"); // 生效数据源 = 画布首个
+    CHECK(s.udp);                   // 传输取自采集A（UDP），采集B 不参与接线
+    REQUIRE(s.sinks.size() == 4);   // 全部 sink 进入列表，运行器按 sourceName 过滤
+    CHECK(s.sinks[0].sourceName == "采集A");
+    CHECK(s.sinks[0].udpClient && !s.sinks[0].udpMulticast);
+    CHECK(s.sinks[0].host == "10.0.0.9");
+    CHECK(s.sinks[0].remotePort == 7101);
+    CHECK(s.sinks[1].sourceName == "采集A");
+    CHECK(s.sinks[1].udpMulticast && !s.sinks[1].udpClient);
+    CHECK(s.sinks[1].host == "239.192.9.40");
+    CHECK(s.sinks[2].sourceName == "采集B"); // 关联非生效源：保留配置，不实际转发
+    CHECK(!s.sinks[2].udp && !s.sinks[2].serial && s.sinks[2].tcpClient);
+    CHECK(s.sinks[3].sourceName.empty());    // 未关联
+}
+
+TEST_CASE("多数据目的联动：一源双目的端到端（单播 + 组播同帧转发）") {
+    // 数据源 UDP 59374 收 TLV 帧；两个数据目的同时转发（PollWorker::forwardFrames 同款路径）：
+    //   目的1 = UDP 单播客户端 → 平台A(59375)；目的2 = UDP 组播 → 组 239.192.9.40:59376
+    // 平台A 与组成员各收全量、字节一致
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.udp = true;
+    cfg.localPort = 59374;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "温度";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    cfg.fields.push_back(f);
+
+    packet::UdpLink member; // 目的2 的组播订阅方
+    std::string err;
+    if (!member.startMulticast("239.192.9.40", 59376, err)) {
+        std::printf("    [skip] 加入组播组失败: %s\n", err.c_str());
+        return;
+    }
+    // 组播环回可达性探测（虚拟机环境常见不可达）
+    {
+        packet::UdpLink probe;
+        REQUIRE(probe.start(0, err));
+        probe.setRemote("239.192.9.40", 59376);
+        CHECK(probe.send(hex("00"), err));
+        std::deque<packet::UdpPacket> in;
+        for (int i = 0; i < 20 && in.empty(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            member.drain(in);
+        }
+        probe.stop();
+        if (in.empty()) {
+            std::printf("    [skip] 组播环回不可达（本机路由/防火墙限制）\n");
+            member.stop();
+            return;
+        }
+    }
+
+    packet::UdpLink receiverA; // 目的1 的单播平台端
+    if (!receiverA.start(59375, err)) {
+        std::printf("    [skip] 端口 59375 绑定失败: %s\n", err.c_str());
+        member.stop();
+        return;
+    }
+    FrameDataSource src(cfg);
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59374 绑定失败: %s\n", err.c_str());
+        receiverA.stop();
+        member.stop();
+        return;
+    }
+
+    // 两个数据目的链路（connectSink 语义：单播=connect 远端；组播=临时端口+setRemote 组地址）
+    packet::UdpLink sink1, sink2, device;
+    REQUIRE(sink1.startClient("127.0.0.1", 59375, err));
+    REQUIRE(sink2.start(0, err));
+    sink2.setRemote("239.192.9.40", 59376);
+    REQUIRE(device.start(0, err));
+    device.setRemote("127.0.0.1", 59374);
+
+    const int N = 1000, batch = 100;
+    auto frames = generateTestFrames(cfg.framing, cfg.fields, N, 21);
+    REQUIRE(frames.size() == (size_t)N);
+
+    Tag t = makeTag("温度", 0, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t};
+    uint64_t gotA = 0, gotB = 0, bytesA = 0, bytesB = 0;
+    bool firstA = false, firstB = false;
+    std::deque<packet::UdpPacket> rxA, rxB;
+    std::deque<FrameDataSource::FrameLogEntry> log;
+    auto drainBoth = [&]() {
+        receiverA.drain(rxA);
+        for (auto& q : rxA) {
+            if (gotA == 0) firstA = (q.data == frames[0]);
+            ++gotA;
+            bytesA += q.data.size();
+        }
+        rxA.clear();
+        member.drain(rxB);
+        for (auto& q : rxB) {
+            if (gotB == 0) firstB = (q.data == frames[0]);
+            ++gotB;
+            bytesB += q.data.size();
+        }
+        rxB.clear();
+    };
+
+    size_t sent = 0;
+    for (int b = 0; b < N / batch; ++b) {
+        for (int i = 0; i < batch; ++i, ++sent)
+            REQUIRE(device.send(frames[sent], err));
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        (void)src.readTags(tags); // 收包+解析
+        std::deque<std::vector<uint8_t>> toForward;
+        src.drainForwardFrames(toForward);
+        for (const auto& fr : toForward) { // 同帧发两个目的
+            CHECK(sink1.send(fr, err));
+            CHECK(sink2.send(fr, err));
+        }
+        drainBoth();
+    }
+    for (int i = 0; i < 200 && (gotA < (uint64_t)N || gotB < (uint64_t)N); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        drainBoth();
+    }
+
+    CHECK(gotA == (uint64_t)N); // 单播目的：全量
+    CHECK(gotB == (uint64_t)N); // 组播目的：全量
+    CHECK(bytesA == (uint64_t)N * frames[0].size());
+    CHECK(bytesB == (uint64_t)N * frames[0].size());
+    CHECK(firstA && firstB);       // 两路首帧字节一致（原样转发）
+    CHECK(src.matchedFrameCount() == (uint64_t)N);
+    auto results = src.readTags(tags);
+    CHECK(results[0].ok);
+    int64_t v = 0;
+    if (auto* i = std::get_if<int64_t>(&results[0].value)) v = *i;
+    if (auto* d = std::get_if<double>(&results[0].value)) v = (int64_t)*d;
+    (void)v; // 值为随机帧生成，OK/计数已覆盖
+
+    device.stop();
+    sink1.stop();
+    sink2.stop();
+    src.disconnect();
+    receiverA.stop();
+    member.stop();
+}
