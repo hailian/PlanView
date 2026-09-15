@@ -1646,3 +1646,64 @@ TEST_CASE("多数据目的联动：一源双目的端到端（单播 + 组播同
     receiverA.stop();
     member.stop();
 }
+
+TEST_CASE("规约字段 hex 类型：长度可配 + 隐式字符串标签 + 运行时解出十六进制文本") {
+    Project p;
+    Page pg;
+    pg.id = "page-1";
+    Component proto = ComponentRegistry::createComponent("ProtocolConfig", "proto-1");
+    proto.name = "帧协议";
+    proto.setProp("fieldCount", int64_t(1));
+    proto.setProp("f0.name", std::string("序列号"));
+    proto.setProp("f0.tagId", int64_t(1));
+    proto.setProp("f0.offset", int64_t(0));
+    proto.setProp("f0.type", std::string("hex"));
+    proto.setProp("f0.len", int64_t(4));
+    pg.components.push_back(proto);
+
+    // 隐式绑定：hex 字段 → 字符串标签（值 = 十六进制文本）
+    Component label = ComponentRegistry::createComponent("Label", "l-1");
+    label.setProp("bindField", std::string("帧协议/序列号"));
+    pg.components.push_back(label);
+    p.pages.push_back(std::move(pg));
+    synthesizeImplicitBindings(p);
+    const Tag* t = p.tags.find("序列号");
+    REQUIRE(t != nullptr);
+    CHECK(t->type == TagDataType::String);
+
+    // 字段解析：type=hex 走长度属性（1..256），len=4 → bytes=4
+    packet::FramingConfig fr;
+    std::vector<TagField> fields;
+    protocolFramingFromComponent(proto, fr, fields);
+    REQUIRE(fields.size() == 1);
+    CHECK(fields[0].type == packet::FieldType::Hex);
+    CHECK(fields[0].bytes == 4);
+
+    // e2e：UDP 回环收 TLV 帧，hex 字段解出大写空格分隔文本（与报文监视同格式）
+    FrameSourceSettings cfg;
+    cfg.udp = true;
+    cfg.localPort = 59352;
+    cfg.remotePort = 59352;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    cfg.fields = fields;
+    FrameDataSource src(cfg);
+    std::string err;
+    if (!src.connect(err)) {
+        std::printf("    [skip] 端口 59352 绑定失败: %s\n", err.c_str());
+        return;
+    }
+    packet::UdpLink sender;
+    CHECK(sender.start(0, err));
+    sender.setRemote("127.0.0.1", 59352);
+    CHECK(sender.send(hex("01 00 04 AA 55 01 F4"), err)); // V = AA 55 01 F4
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    Tag t2 = makeTag("序列号", 0, TagDataType::String, 1.0);
+    std::vector<const Tag*> tags = {&t2};
+    auto results = src.readTags(tags);
+    CHECK(results[0].ok);
+    CHECK(std::get<std::string>(results[0].value) == "AA 55 01 F4");
+
+    sender.stop();
+    src.disconnect();
+}

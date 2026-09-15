@@ -19,8 +19,8 @@ namespace {
 
 // 规约字段类型候选（与 packet::FieldType 的可映射子集）
 const char* kFieldTypes[] = {"u8",  "i8",   "u16",  "i16", "u32", "i32",
-                             "f32", "f64",  "bool", "string", "enum"};
-const int kFieldTypeCount = 11;
+                             "f32", "f64",  "bool", "string", "enum", "hex"};
+const int kFieldTypeCount = 12;
 
 // 枚举字段编辑弹窗：字节宽度(1/2/4) + 值→名称行（存 f<i>.len / enumCount / e<j>.v|n）
 void drawEnumEditor(Component& c, PlannerContext& ctx, const std::string& p) {
@@ -324,7 +324,8 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
                 props::asString(cp->propOr(pp + "type", std::string("u16"))), prevType);
             int bytes = packet::fieldTypeBytes(prevType);
             if (bytes == 0) {
-                if (prevType == packet::FieldType::String) {
+                if (prevType == packet::FieldType::String ||
+                    prevType == packet::FieldType::Hex) { // 长度可配（1..256 字节）
                     bytes = (int)std::clamp<int64_t>(
                         props::asInt(cp->propOr(pp + "len", int64_t(16))), 1, 256);
                 } else { // Enum：宽度限 1/2/4 字节
@@ -457,9 +458,10 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
         // 类型可能刚被修改，重新读取以决定本列
         typeName = props::asString(cp->propOr(p + "type", std::string("u16")));
 
-        // scale：数值类型工程换算（工程值 = 原始值 × scale；bool/string/enum 不适用）
+        // scale：数值类型工程换算（工程值 = 原始值 × scale；bool/string/enum/hex 不适用）
         ImGui::TableNextColumn();
-        if (typeName != "bool" && typeName != "string" && typeName != "enum") {
+        if (typeName != "bool" && typeName != "string" && typeName != "enum" &&
+            typeName != "hex") {
             ImGui::SetNextItemWidth(-1);
             double sc = props::asDouble(cp->propOr(p + "scale", 1.0));
             if (ImGui::InputDouble("##sc", &sc, 0.0, 0.0, "%.4f")) {
@@ -468,9 +470,9 @@ void drawProtocolFields(Component& c, PlannerContext& ctx) {
             }
         }
 
-        // 长度/枚举：字符串=长度（字节）；枚举=编辑映射；其它=空
+        // 长度/枚举：字符串/hex=长度（字节）；枚举=编辑映射；其它=空
         ImGui::TableNextColumn();
-        if (typeName == "string") {
+        if (typeName == "string" || typeName == "hex") {
             ImGui::SetNextItemWidth(-1);
             int len = (int)props::asInt(cp->propOr(p + "len", int64_t(16)));
             if (ImGui::InputInt("##len", &len, 0, 0)) {

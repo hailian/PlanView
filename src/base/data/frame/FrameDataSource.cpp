@@ -30,10 +30,11 @@ uint64_t readUint(const uint8_t* p, int n, bool bigEndian) {
 
 // 按字段类型解出 TagValue；越界/不支持返回 false
 // 整数→int64_t、浮点→double（数值字段乘 scale 换算，scale=1 保持整数型）；
-// Bool→bool、String/Enum→std::string（枚举名或原数值文本），这两类不做换算
+// Bool→bool、String/Enum/Hex→std::string（枚举名/原数值文本/十六进制文本），不做换算
 bool fieldValue(const TagField& f, const uint8_t* p, int avail, TagValue& out) {
     int bytes = packet::fieldTypeBytes(f.type);
-    if (f.type == packet::FieldType::String || f.type == packet::FieldType::Enum)
+    if (f.type == packet::FieldType::String || f.type == packet::FieldType::Enum ||
+        f.type == packet::FieldType::Hex)
         bytes = f.bytes; // 长度/宽度可配
     if (bytes <= 0) return false;
     if (f.offset < 0 || (int64_t)f.offset + bytes > (int64_t)avail) return false;
@@ -42,6 +43,18 @@ bool fieldValue(const TagField& f, const uint8_t* p, int avail, TagValue& out) {
     case packet::FieldType::Bool:
         out = (p[0] != 0);
         return true;
+    case packet::FieldType::Hex: { // 十六进制文本（大写、空格分隔，与报文监视同格式）
+        static const char kHex[] = "0123456789ABCDEF";
+        std::string s;
+        s.reserve((size_t)bytes * 3 - 1);
+        for (int i = 0; i < bytes; ++i) {
+            if (i) s += ' ';
+            s += kHex[p[i] >> 4];
+            s += kHex[p[i] & 0xF];
+        }
+        out = std::move(s);
+        return true;
+    }
     case packet::FieldType::String: {
         int n = bytes; // 去尾部 0x00/0xFF 填充，保留原始字节（UTF-8 友好）
         while (n > 0 && (p[n - 1] == 0x00 || p[n - 1] == 0xFF)) --n;

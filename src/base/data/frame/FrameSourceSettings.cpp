@@ -62,7 +62,8 @@ void protocolFramingFromComponent(const Component& c, packet::FramingConfig& fr,
             f.type = packet::FieldType::U16;
         if (int n = packet::fieldTypeBytes(f.type)) {
             f.bytes = n; // 固定长度类型由类型决定
-        } else if (f.type == packet::FieldType::String) {
+        } else if (f.type == packet::FieldType::String ||
+                   f.type == packet::FieldType::Hex) { // 长度可配（1..256 字节）
             f.bytes = (int)std::clamp<int64_t>(props::asInt(c.propOr(prefix + "len", int64_t(16))),
                                                1, 256);
         } else if (f.type == packet::FieldType::Enum) {
@@ -368,12 +369,14 @@ void synthesizeImplicitBindings(Project& p) {
                     nt.type = TagDataType::Float32; break;
                 case packet::FieldType::Bool: nt.type = TagDataType::Bool; break;
                 case packet::FieldType::String: case packet::FieldType::Enum:
-                    nt.type = TagDataType::String; break; // 文本/枚举名标签
+                case packet::FieldType::Hex:
+                    nt.type = TagDataType::String; break; // 文本/枚举名/hex 文本标签
                 default: nt.type = TagDataType::UInt16; break; // u8/u16/i8 升宽
                 }
                 // 带 scale 的数值字段：工程值可能为小数，标签升为 Float32 承接
                 if (f->scale != 1.0 && f->type != packet::FieldType::Bool &&
-                    f->type != packet::FieldType::String && f->type != packet::FieldType::Enum)
+                    f->type != packet::FieldType::String && f->type != packet::FieldType::Enum &&
+                    f->type != packet::FieldType::Hex)
                     nt.type = TagDataType::Float32;
                 nt.scale = 1.0; // 换算在协议侧（字段 scale），标签不再二次缩放
                 std::string err;
