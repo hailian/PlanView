@@ -5,14 +5,17 @@
 // v1 只收不发（supportsWrite=false），写回走原 PlanView 行协议数据源。
 #pragma once
 
+#include <atomic>
 #include <deque>
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "base/data/IDataSource.h"
 #include "base/data/frame/FrameSourceSettings.h"
+#include "base/data/frame/TestFrameGen.h" // IncrementalFrameGen（自发送）
 #include "base/packet/PcapLink.h"
 #include "base/packet/SerialLink.h"
 #include "base/packet/TcpLink.h"
@@ -56,6 +59,8 @@ public:
 
 private:
     void pumpFrames();  // 收包队列 → 拆帧 → 规约解析 → 缓存 + 日志（worker 线程调用）
+    void startAutoSend(); // 自发送（模拟设备）：按拆帧配置分组建生成器并启动发送线程
+    void sendLoop();      // 自发送线程：周期性生成帧并经当前链路发出
 
     FrameSourceSettings cfg_;
     packet::UdpLink udp_;
@@ -66,6 +71,14 @@ private:
     packet::FlowSplitters flows_{cfg_.framing}; // 镜像 TCP 逐流拆帧（UDP 直通）
     // 协议组多帧头（含单配置回退）；命中索引供字段归属过滤
     std::vector<packet::FramingConfig> framings_;
+
+    // 自发（本地模拟设备）：独立线程按周期产帧，直接喂进自身收包/解析管线
+    //（无网络无端口；报文监视、数据目的转发与正常收包完全同路径）
+    std::vector<IncrementalFrameGen> gens_; // 按拆帧配置分组的增量生成器
+    std::thread sendThread_;
+    std::atomic<bool> sending_{false};
+    std::mutex genM_;                          // 自发生成帧 → pumpFrames 的交接队列
+    std::deque<std::vector<uint8_t>> genInbox_;
 
     mutable std::mutex mutex_;                // 统计 getter 为 const 读
     // 解析值缓存按「地址组」存 vector（构造时按 cfg_.fields 的 address 去重分组），

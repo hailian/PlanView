@@ -100,11 +100,17 @@ FrameSourceSettings frameSettingsFromProject(const Project& p) {
     std::string transport = props::asString(ds->propOr("transport", std::string("UDP")));
     s.udp = transport == "UDP";
     s.serial = transport == "串口";
+    // 传输=自发：本地模拟设备——无网络无端口，生成器周期产帧直接驱动自身解析
+    s.autoSend = transport == "自发";
+    if (s.autoSend)
+        s.autoSendMs = (int)std::clamp<int64_t>(
+            props::asInt(ds->propOr("autoSendMs", int64_t(1000))), 20, 60000);
     std::string udpRole = props::asString(ds->propOr("udpRole", std::string("服务端")));
     s.udpClient = s.udp && udpRole == "客户端";
     // 组播角色：host=组地址（224~239 段），localPort=组端口（bind + 加入组）
     s.udpMulticast = s.udp && udpRole == "组播";
-    s.tcpClient = props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
+    s.tcpClient = !s.udp && !s.serial && !s.listen && !s.autoSend &&
+                  props::asString(ds->propOr("tcpRole", std::string("客户端"))) != "服务端";
     s.host = props::asString(ds->propOr("host", s.host));
     s.remotePort = (int)props::asInt(ds->propOr("remotePort", int64_t(s.remotePort)));
     s.localPort = (int)props::asInt(ds->propOr("localPort", int64_t(s.localPort)));

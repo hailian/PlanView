@@ -77,11 +77,10 @@ std::vector<uint8_t> randomFieldBytes(const TagField& f, std::mt19937& rng) {
     return b;
 }
 
-// TLV：单字段成帧 T|L|V（V = offset 个 0 填充 + 值）
-std::vector<uint8_t> encodeTlvFrame(const packet::FramingConfig& fr, const TagField& f,
-                                    std::mt19937& rng) {
+// TLV：单字段成帧 T|L|V（V = offset 个 0 填充 + 值字节）
+std::vector<uint8_t> encodeTlvFrameVal(const packet::FramingConfig& fr, const TagField& f,
+                                       const std::vector<uint8_t>& val) {
     std::vector<uint8_t> v((size_t)f.offset, 0);
-    std::vector<uint8_t> val = randomFieldBytes(f, rng);
     v.insert(v.end(), val.begin(), val.end());
     std::vector<uint8_t> frame;
     writeUint(frame, (uint64_t)f.tagId, fr.tagBytes, fr.bigEndian);
@@ -93,17 +92,17 @@ std::vector<uint8_t> encodeTlvFrame(const packet::FramingConfig& fr, const TagFi
 }
 
 // 帧头+Length：一帧含全部字段（负载按 offset 布局，空隙 0 填充）
-std::vector<uint8_t> encodeHeaderLenFrame(const packet::FramingConfig& fr,
-                                          const std::vector<TagField>& fields,
-                                          std::mt19937& rng) {
+std::vector<uint8_t> encodeHeaderLenFrameVal(const packet::FramingConfig& fr,
+                                             const std::vector<TagField>& fields,
+                                             const std::vector<std::vector<uint8_t>>& vals) {
     size_t payloadLen = 0;
     for (const auto& f : fields)
         payloadLen = std::max(payloadLen, (size_t)f.offset + (size_t)f.bytes);
     std::vector<uint8_t> payload(payloadLen, 0);
-    for (const auto& f : fields) {
-        std::vector<uint8_t> val = randomFieldBytes(f, rng);
-        std::memcpy(payload.data() + f.offset, val.data(), val.size());
-    }
+    for (size_t i = 0; i < fields.size(); ++i)
+        if (i < vals.size())
+            std::memcpy(payload.data() + fields[i].offset, vals[i].data(),
+                        std::min(vals[i].size(), (size_t)fields[i].bytes));
     const int lenFieldEnd = fr.lenOffset + fr.lenBytesHeader;
     std::vector<uint8_t> frame = fr.header;
     frame.resize((size_t)fr.lenOffset, 0); // 帧头与 length 字段间的填充
@@ -113,6 +112,22 @@ std::vector<uint8_t> encodeHeaderLenFrame(const packet::FramingConfig& fr,
     writeUint(frame, len, fr.lenBytesHeader, fr.bigEndianHeader);
     frame.insert(frame.end(), payload.begin(), payload.end());
     return frame;
+}
+
+// TLV：单字段成帧（随机值）——供随机生成路径复用值化成帧助手
+std::vector<uint8_t> encodeTlvFrame(const packet::FramingConfig& fr, const TagField& f,
+                                    std::mt19937& rng) {
+    return encodeTlvFrameVal(fr, f, randomFieldBytes(f, rng));
+}
+
+// 帧头+Length：一帧含全部字段（随机值）
+std::vector<uint8_t> encodeHeaderLenFrame(const packet::FramingConfig& fr,
+                                          const std::vector<TagField>& fields,
+                                          std::mt19937& rng) {
+    std::vector<std::vector<uint8_t>> vals;
+    vals.reserve(fields.size());
+    for (const auto& f : fields) vals.push_back(randomFieldBytes(f, rng));
+    return encodeHeaderLenFrameVal(fr, fields, vals);
 }
 
 } // namespace
@@ -152,6 +167,87 @@ std::vector<std::vector<uint8_t>> generateTestFrames(
                 out.push_back(encodeHeaderLenFrame(framings[k], group, rng));
             }
         }
+    }
+    return out;
+}
+
+// ---- 周期自发生成器（数据源「自发送/模拟设备」）----
+
+IncrementalFrameGen::IncrementalFrameGen(const packet::FramingConfig& fr,
+                                         std::vector<TagField> fields)
+    : fr_(fr), fields_(std::move(fields)), counters_(fields_.size(), 0) {}
+
+std::vector<uint8_t> IncrementalFrameGen::nextFieldBytes(const TagField& f, size_t idx) {
+    uint64_t c = counters_[idx]++;
+    std::vector<uint8_t> b;
+    switch (f.type) {
+    case packet::FieldType::Bool:
+        b.push_back((uint8_t)(c % 2));
+        break;
+    case packet::FieldType::U8: case packet::FieldType::U16:
+    case packet::FieldType::U32: {
+        uint64_t range = f.type == packet::FieldType::U8   ? 256ull
+                         : f.type == packet::FieldType::U16 ? 65536ull
+                                                            : 4294967296ull;
+        writeUint(b, c % range, packet::fieldTypeBytes(f.type), f.bigEndian);
+        break;
+    }
+    case packet::FieldType::I8: case packet::FieldType::I16:
+    case packet::FieldType::I32: {
+        // 有符号走全量程：0 起步向上到 max，翻到 min 继续环回
+        int bytes = packet::fieldTypeBytes(f.type);
+        int64_t range = (int64_t)1 << (bytes * 8);
+        int64_t v = (int64_t)(c % (uint64_t)range) - range / 2;
+        writeUint(b, (uint64_t)v, bytes, f.bigEndian); // writeUint 按补码位模式写出
+        break;
+    }
+    case packet::FieldType::F32: {
+        float v = (float)(c % 101); // 0..100 步进 1 环回
+        uint32_t u;
+        std::memcpy(&u, &v, 4);
+        writeUint(b, u, 4, f.bigEndian);
+        break;
+    }
+    case packet::FieldType::F64: {
+        double v = (double)(c % 101);
+        uint64_t u;
+        std::memcpy(&u, &v, 8);
+        writeUint(b, u, 8, f.bigEndian);
+        break;
+    }
+    case packet::FieldType::Enum: {
+        if (!f.enums.empty()) { // 枚举遍历映射表
+            writeUint(b, (uint64_t)f.enums[c % f.enums.size()].first, f.bytes, f.bigEndian);
+        } else { // 空表按宽度环回
+            uint64_t range = (uint64_t)1 << (8 * f.bytes);
+            writeUint(b, c % range, f.bytes, f.bigEndian);
+        }
+        break;
+    }
+    case packet::FieldType::String: { // 每字节 'a'..'z' 同步环回（aaa→bbb→…→zzz→aaa）
+        uint8_t ch = (uint8_t)('a' + (c % 26));
+        b.assign((size_t)std::max(1, f.bytes), ch);
+        break;
+    }
+    default: { // Hex 及其余：每字节 0..255 环回
+        uint8_t v = (uint8_t)(c % 256);
+        b.assign((size_t)std::max(1, f.bytes), v);
+        break;
+    }
+    }
+    return b;
+}
+
+std::vector<std::vector<uint8_t>> IncrementalFrameGen::nextFrames() {
+    std::vector<std::vector<uint8_t>> vals(fields_.size());
+    for (size_t i = 0; i < fields_.size(); ++i)
+        vals[i] = nextFieldBytes(fields_[i], i);
+    std::vector<std::vector<uint8_t>> out;
+    if (fr_.mode == packet::FrameMode::Tlv) {
+        for (size_t i = 0; i < fields_.size(); ++i)
+            out.push_back(encodeTlvFrameVal(fr_, fields_[i], vals[i]));
+    } else {
+        out.push_back(encodeHeaderLenFrameVal(fr_, fields_, vals));
     }
     return out;
 }

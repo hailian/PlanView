@@ -573,6 +573,9 @@ void drawDataSource(ImDrawList* dl, const ScreenRect& r, const Component& c,
         std::snprintf(line, sizeof(line), "串口 %s %lld-%lld-%c-%lld", serialPort.c_str(),
                       (long long)baud, (long long)dataBits,
                       parity == "奇" ? 'O' : parity == "偶" ? 'E' : 'N', (long long)stopBits);
+    } else if (transport == "自发") { // 本地模拟设备："自发 1000ms"
+        int64_t sendMs = props::asInt(c.propOr("autoSendMs", int64_t(1000)));
+        std::snprintf(line, sizeof(line), "自发 %lldms", (long long)sendMs);
     } else if (transport == "TCP") {
         if (tcpRole == "服务端")
             std::snprintf(line, sizeof(line), "TCP服务端 :%lld", (long long)localPort);

@@ -1707,3 +1707,126 @@ TEST_CASE("规约字段 hex 类型：长度可配 + 隐式字符串标签 + 运�
     sender.stop();
     src.disconnect();
 }
+
+TEST_CASE("自发生成器：按类型确定性递增（u8 环回/枚举遍历/字符串 a..z/浮点步进）") {
+    packet::FramingConfig fr; // 默认 TLV：T1B L2B 大端
+    std::vector<TagField> fields;
+    TagField a;
+    a.name = "计数"; a.tagId = 1; a.offset = 0; a.type = packet::FieldType::U8; a.bytes = 1;
+    fields.push_back(a);
+    TagField e = a;
+    e.name = "模式"; e.tagId = 2; e.type = packet::FieldType::Enum; e.bytes = 1;
+    e.enums = {{0, "手动"}, {1, "自动"}, {2, "远程"}};
+    fields.push_back(e);
+    TagField s = a;
+    s.name = "名称"; s.tagId = 3; s.type = packet::FieldType::String; s.bytes = 3;
+    fields.push_back(s);
+    TagField f32 = a;
+    f32.name = "温度"; f32.tagId = 4; f32.type = packet::FieldType::F32; f32.bytes = 4;
+    fields.push_back(f32);
+
+    IncrementalFrameGen g(fr, fields);
+    // 周期 1：计数=00 模式=00(手动) 名称=616161 温度=0.0f(00000000)
+    auto c1 = g.nextFrames();
+    REQUIRE(c1.size() == 4); // TLV：每字段一帧
+    CHECK(packet::bytesToHex(c1[0]) == "01 00 01 00");
+    CHECK(packet::bytesToHex(c1[1]) == "02 00 01 00");
+    CHECK(packet::bytesToHex(c1[2]) == "03 00 03 61 61 61");
+    CHECK(packet::bytesToHex(c1[3]) == "04 00 04 00 00 00 00");
+    // 周期 2：计数=01 模式=01 名称=626262 温度=1.0f(3F800000)
+    auto c2 = g.nextFrames();
+    CHECK(packet::bytesToHex(c2[0]) == "01 00 01 01");
+    CHECK(packet::bytesToHex(c2[1]) == "02 00 01 01");
+    CHECK(packet::bytesToHex(c2[2]) == "03 00 03 62 62 62");
+    CHECK(packet::bytesToHex(c2[3]) == "04 00 04 3F 80 00 00");
+    // 枚举遍历环回：周期 4 回到 0（手动）
+    g.nextFrames(); // 周期 3：远程(02)
+    auto c4 = g.nextFrames();
+    CHECK(packet::bytesToHex(c4[1]) == "02 00 01 00");
+    // 字符串环回：构造独立生成器推 26 周期，第 26 周期 'z'、第 27 周期回 'a'
+    {
+        IncrementalFrameGen g2(fr, {fields[2]});
+        std::vector<uint8_t> last;
+        for (int i = 0; i < 26; ++i) last = g2.nextFrames()[0];
+        CHECK(packet::bytesToHex(last) == "03 00 03 7A 7A 7A"); // 'z'
+        last = g2.nextFrames()[0];
+        CHECK(packet::bytesToHex(last) == "03 00 03 61 61 61"); // 回 'a'
+    }
+    // u8 环回：推 256 周期后回 0
+    {
+        IncrementalFrameGen g3(fr, {fields[0]});
+        std::vector<uint8_t> last;
+        for (int i = 0; i < 256; ++i) last = g3.nextFrames()[0];
+        CHECK(packet::bytesToHex(last) == "01 00 01 FF"); // 255
+        last = g3.nextFrames()[0];
+        CHECK(packet::bytesToHex(last) == "01 00 01 00"); // 环回 0
+    }
+}
+
+TEST_CASE("数据源自发传输：设置合成 + 本地产帧驱动标签（无网络无端口）") {
+    // 合成：transport=自发 → autoSend 置位（周期夹紧 20..60000），其余传输项全关
+    {
+        Project p;
+        Page pg;
+        pg.id = "page-1";
+        Component ds = ComponentRegistry::createComponent("DataSource", "ds-1");
+        ds.setProp("transport", std::string("自发"));
+        ds.setProp("autoSendMs", int64_t(5)); // 超下限 → 夹紧 20
+        pg.components.push_back(ds);
+        p.pages.push_back(std::move(pg));
+        FrameSourceSettings s = frameSettingsFromProject(p);
+        CHECK(s.enabled);
+        CHECK(s.autoSend);
+        CHECK(s.autoSendMs == 20);
+        CHECK(!s.udp && !s.serial && !s.listen && !s.tcpClient);
+    }
+
+    // 端到端：仅配周期（100ms）+ TLV u16 字段——产帧直接驱动自身解析管线，
+    // 标签值随周期递增、命中计数增长、帧进入转发队列（数据目的可转发自发帧）
+    FrameSourceSettings cfg;
+    cfg.enabled = true;
+    cfg.autoSend = true;
+    cfg.autoSendMs = 100;
+    cfg.framing.mode = packet::FrameMode::Tlv;
+    TagField f;
+    f.name = "计数";
+    f.tagId = 1;
+    f.offset = 0;
+    f.type = packet::FieldType::U16;
+    f.address = 0;
+    cfg.fields.push_back(f);
+
+    FrameDataSource src(cfg);
+    std::string err;
+    CHECK(src.connect(err)); // 无链路可建：直接进入产帧状态
+    CHECK(src.isConnected());
+
+    Tag t = makeTag("计数", 0, TagDataType::UInt16, 1.0);
+    std::vector<const Tag*> tags = {&t};
+    int64_t last = -1;
+    for (int i = 0; i < 60 && last < 3; ++i) { // 上限 3s：等到值递增过 3
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        auto results = src.readTags(tags); // readTags 即泵：自发帧 → 解析 → 标签
+        if (results[0].ok) {
+            int64_t v = 0;
+            if (auto* i64 = std::get_if<int64_t>(&results[0].value)) v = *i64;
+            if (auto* d = std::get_if<double>(&results[0].value)) v = (int64_t)*d;
+            if (v > last) last = v; // 周期递增：0,1,2,3...
+        }
+    }
+    CHECK(last >= 3);                  // 至少推进 4 个周期
+    CHECK(src.matchedFrameCount() >= 4);
+    std::deque<std::vector<uint8_t>> fwd;
+    src.drainForwardFrames(fwd);
+    CHECK(fwd.size() >= 4);            // 自发帧照常进入转发队列
+    std::deque<FrameDataSource::FrameLogEntry> log;
+    src.drainFrameLog(log);
+    CHECK(log.size() >= 1);            // 报文监视可见
+
+    uint64_t settled = src.matchedFrameCount();
+    src.disconnect();                  // 停产帧线程
+    CHECK(!src.isConnected());
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    (void)src.readTags(tags);
+    CHECK(src.matchedFrameCount() == settled); // 断开后不再产帧
+}

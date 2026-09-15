@@ -54,6 +54,8 @@ struct FrameSinkSettings {
 struct FrameSourceSettings {
     bool enabled = false;            // true=帧数据源；false=原 PlanView TCP 行协议
     bool autoStart = false;          // 仅帧数据源：true=PageViewer 打开即连接；false=顶栏手动启动
+    bool autoSend = false;           // 自发送（模拟设备）：按关联协议格式周期性发帧（收包不受影响）
+    int autoSendMs = 1000;           // 自发送周期（ms），20..60000
     bool udp = false;                // 传输选择（serial 优先，其次 udp，均 false = TCP）
     bool serial = false;             // true=串口字节流（同样走 TCP 拆帧）
     bool udpClient = false;          // 仅 UDP：true=客户端(connect 远端)；false=服务端(bind 本地)

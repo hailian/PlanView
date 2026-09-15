@@ -146,7 +146,10 @@ std::vector<ComponentTypeInfo> builtinTypes() {
         i.properties = {
             // 自动启动默认关：PageViewer 打开工程不主动连接数据源，顶栏可手动启动/停止
             specBool("autoStart", "自动启动", false),
-            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听"}),
+            specEnum("transport", "传输方式", "UDP", {"UDP", "TCP", "串口", "监听", "自发"}),
+            // 自发（本地模拟设备）：仅配周期——按关联协议格式周期性产帧直接驱动自身解析
+            //（无网络、无端口），字段值按类型确定性递增（整数 0..max 环回/枚举遍历/字符串 a..z）
+            specInt("autoSendMs", "发送周期(ms)", 1000, 20, 60000),
             // UDP 角色：服务端=绑定本地端口收任意对端；客户端=connect 远端仅收该对端；
             // 组播=绑定本地端口并加入 host 组播组（224~239 段，同机多消费者可共收）
             specEnum("udpRole", "UDP角色", "服务端", {"服务端", "客户端", "组播"}),

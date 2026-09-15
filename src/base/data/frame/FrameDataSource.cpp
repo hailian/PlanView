@@ -1,10 +1,13 @@
 #include "base/data/frame/FrameDataSource.h"
 
+#include "base/log/Log.h"
 #include "base/packet/HexUtil.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <ctime>
+#include <thread>
 
 namespace pv {
 
@@ -142,36 +145,86 @@ bool FrameDataSource::connect(std::string& err) {
     // 分组计数向量按拆帧配置数就位（重连不重置：与 matchedFrames_ 累计口径一致）
     if (matchedByIdx_.size() != framings_.size())
         matchedByIdx_.assign(framings_.size(), 0);
-    if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
-        return serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
-                            cfg_.stopBits, err);
-    if (cfg_.listen) { // 监听：三元组 dip/dport/协议 过滤，绑定端口即 dport
+    bool ok = false;
+    if (cfg_.autoSend) { // 传输=自发：本地模拟设备，无链路可建，产帧线程即全部
+        ok = true;
+    } else if (cfg_.serial) // 串口：打开 COM 口（字节流，与 TCP 共用拆帧）
+        ok = serial_.open(cfg_.serialPort, cfg_.baud, cfg_.dataBits, cfg_.parity,
+                          cfg_.stopBits, err);
+    else if (cfg_.listen) { // 监听：三元组 dip/dport/协议 过滤，绑定端口即 dport
         if (cfg_.listenPcap) // 镜像抓包：BPF 过滤任一方向命中（未装 Npcap 时 err 带安装提示）
-            return pcap_.start(cfg_.listenNic,
-                               packet::buildListenBpf(cfg_.listenIp, cfg_.listenPort,
-                                                      cfg_.listenTcp),
-                               err);
-        if (cfg_.listenTcp)
-            return tcp_.listen(cfg_.listenPort, err, cfg_.listenIp);
-        // UDP 反向命中 = 源==(dip,dport)；dip="*"（通配）不限源端口（正向全收）
-        int matchPort = cfg_.listenIp == "*" ? 0 : cfg_.listenPort;
-        return udp_.start(cfg_.listenPort, err, cfg_.listenIp, matchPort);
-    }
-    if (cfg_.udp) {
+            ok = pcap_.start(cfg_.listenNic,
+                             packet::buildListenBpf(cfg_.listenIp, cfg_.listenPort,
+                                                    cfg_.listenTcp),
+                             err);
+        else if (cfg_.listenTcp)
+            ok = tcp_.listen(cfg_.listenPort, err, cfg_.listenIp);
+        else {
+            // UDP 反向命中 = 源==(dip,dport)；dip="*"（通配）不限源端口（正向全收）
+            int matchPort = cfg_.listenIp == "*" ? 0 : cfg_.listenPort;
+            ok = udp_.start(cfg_.listenPort, err, cfg_.listenIp, matchPort);
+        }
+    } else if (cfg_.udp) {
         if (cfg_.udpMulticast) // 组播：绑定组端口并加入组（host=组地址）
-            return udp_.startMulticast(cfg_.host, cfg_.localPort, err);
-        if (cfg_.udpClient)
-            return udp_.startClient(cfg_.host, cfg_.remotePort, err);
-        return udp_.start(cfg_.localPort, err);
+            ok = udp_.startMulticast(cfg_.host, cfg_.localPort, err);
+        else if (cfg_.udpClient)
+            ok = udp_.startClient(cfg_.host, cfg_.remotePort, err);
+        else
+            ok = udp_.start(cfg_.localPort, err);
+    } else {
+        // TCP：客户端连接远端 / 服务端监听本地（失败交由 PollWorker 退避重试）
+        ok = cfg_.tcpClient ? tcp_.connect(cfg_.host, cfg_.remotePort, err)
+                            : tcp_.listen(cfg_.localPort, err);
     }
+    if (!ok) return false;
+    startAutoSend();
+    return true;
+}
 
-    // TCP：客户端连接远端 / 服务端监听本地（失败交由 PollWorker 退避重试）
-    if (cfg_.tcpClient)
-        return tcp_.connect(cfg_.host, cfg_.remotePort, err);
-    return tcp_.listen(cfg_.localPort, err);
+// 自发（本地模拟设备）：产帧线程即"链路"。帧经交接队列进入 pumpFrames，
+// 与真实收包同路径（解析/报文监视/数据目的转发全部照常）
+void FrameDataSource::startAutoSend() {
+    if (!cfg_.autoSend) return; // 仅传输=自发时启动
+    gens_.clear();
+    for (size_t k = 0; k < framings_.size(); ++k) { // 协议组多帧头：各协议各自成帧
+        std::vector<TagField> group;
+        for (const auto& f : cfg_.fields)
+            if ((size_t)f.framingIndex == k) group.push_back(f);
+        if (!group.empty())
+            gens_.emplace_back(framings_[k], std::move(group));
+    }
+    sending_ = true;
+    sendThread_ = std::thread([this] { sendLoop(); });
+    PV_LOG_INFO("自发(本地模拟)启动: 周期 %d ms，%zu 组帧", cfg_.autoSendMs, gens_.size());
+}
+
+void FrameDataSource::sendLoop() {
+    const int period = std::max(20, cfg_.autoSendMs);
+    auto next = std::chrono::steady_clock::now() + std::chrono::milliseconds(period);
+    while (sending_) {
+        for (auto& g : gens_) {
+            for (auto& frame : g.nextFrames()) {
+                std::lock_guard<std::mutex> lock(genM_);
+                genInbox_.push_back(std::move(frame));
+                while (genInbox_.size() > 1000)
+                    genInbox_.pop_front(); // 消费停摆时丢最旧（尽力而为）
+            }
+        }
+        // 可中断等待到下一周期（2ms 粒度，兼顾断开响应）
+        while (sending_ && std::chrono::steady_clock::now() < next)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        next += std::chrono::milliseconds(period);
+    }
 }
 
 void FrameDataSource::disconnect() {
+    sending_ = false; // 先停产帧线程，再拆链路
+    if (sendThread_.joinable()) sendThread_.join();
+    gens_.clear();
+    {
+        std::lock_guard<std::mutex> lock(genM_);
+        genInbox_.clear();
+    }
     udp_.stop();
     tcp_.disconnect();
     serial_.close();
@@ -182,6 +235,7 @@ void FrameDataSource::disconnect() {
 }
 
 bool FrameDataSource::isConnected() const {
+    if (cfg_.autoSend) return sending_; // 传输=自发：产帧线程在跑即"已连接"
     if (cfg_.serial) return serial_.isOpen();
     if (cfg_.listen) {
         if (cfg_.listenPcap) return pcap_.isRunning();
@@ -192,6 +246,15 @@ bool FrameDataSource::isConnected() const {
 
 void FrameDataSource::pumpFrames() {
     std::vector<std::vector<uint8_t>> frames;
+
+    // 自发（本地模拟）：产帧线程交来的帧与真实收包同路进解析管线
+    {
+        std::lock_guard<std::mutex> lock(genM_);
+        while (!genInbox_.empty()) {
+            frames.push_back(std::move(genInbox_.front()));
+            genInbox_.pop_front();
+        }
+    }
 
     // 监听与 UDP 是并列来源：监听协议=UDP 时同样走 UDP 收包。
     // 只看 cfg_.udp 会漏收监听帧（transport=监听 时 cfg_.udp 为 false）

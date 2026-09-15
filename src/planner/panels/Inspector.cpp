@@ -819,6 +819,8 @@ void drawInspector(PlannerContext& ctx) {
         bool dsSerial = dsTransport == "串口";
         // 监听：固定三元组 dip/dport/协议，绑定端口即 dport——无独立本地监听端口
         bool dsListen = dsTransport == "监听";
+        // 自发（仅数据源）：本地模拟设备——只配周期，无角色/地址/端口/网卡项
+        bool dsSelfSend = !isSink && dsTransport == "自发";
         // 监听方式=镜像抓包：Npcap 混杂模式（交换机 SPAN 场景），需选抓包网卡
         bool dsListenPcap =
             dsListen && props::asString(
@@ -836,8 +838,8 @@ void drawInspector(PlannerContext& ctx) {
         // 数据源=localPort（bind + 加入组）；数据目的=remotePort（发往组地址，无需加入组）
         bool mcastUseRemotePort = isSink;
         bool dsUseHost = dsTcp ? !dsTcpServer : (dsUdpClient || dsUdpMcast);
-        bool dsUseRemotePort =
-            dsTcp ? !dsTcpServer : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort));
+        bool dsUseRemotePort = dsTcp ? !dsTcpServer
+                                      : (dsUdpClient || (dsUdpMcast && mcastUseRemotePort));
         bool dsUseLocalPort =
             !dsListen && (dsTcp ? dsTcpServer
                                 : (!dsUdpClient && !dsSerial &&
@@ -851,11 +853,13 @@ void drawInspector(PlannerContext& ctx) {
                 // 按传输方式与客户端/服务端只显示相关项，避免误配：
                 // 角色项各自仅对应传输显示；客户端用 host:remotePort；服务端用 localPort；
                 // 串口无角色/端口概念，仅显示 serialPort/baud/dataBits/parity/stopBits
-                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsListen)) continue;
+                if (spec.key == "udpRole" && (dsTcp || dsSerial || dsListen || dsSelfSend))
+                    continue;
                 if (spec.key == "tcpRole" && (!dsTcp || dsSerial || dsListen)) continue;
-                if (spec.key == "host" && !dsUseHost) continue;
-                if (spec.key == "remotePort" && !dsUseRemotePort) continue;
-                if (spec.key == "localPort" && !dsUseLocalPort) continue;
+                if (spec.key == "host" && (!dsUseHost || dsSelfSend)) continue;
+                if (spec.key == "remotePort" && (!dsUseRemotePort || dsSelfSend)) continue;
+                if (spec.key == "localPort" && (!dsUseLocalPort || dsSelfSend)) continue;
+                if (spec.key == "autoSendMs" && !dsSelfSend) continue; // 仅传输=自发显示周期
                 bool serialItem = spec.key == "serialPort" || spec.key == "baud" ||
                                   spec.key == "dataBits" || spec.key == "parity" ||
                                   spec.key == "stopBits";

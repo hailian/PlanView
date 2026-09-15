@@ -24,4 +24,24 @@ std::vector<std::vector<uint8_t>> generateTestFrames(
     const std::vector<packet::FramingConfig>& framings, const std::vector<TagField>& fields,
     int count, uint32_t seed = 0);
 
+// 周期自发生成器（数据源「自发送/模拟设备」）：字段值按类型**确定性递增**——
+// 无符号整数 0..类型最大值环回、有符号走全量程、浮点 0..100 步进 1 环回、
+// 布尔 0/1 翻转、枚举按映射表遍历（空表按宽度环回）、字符串每字节 'a'..'z' 环回、
+// hex 每字节 0..255 环回。每周期产出一组帧（TLV=每字段一帧；帧头+Length=一帧含全部字段），
+// 与拆帧配置对称、可被接收侧解析回来。
+class IncrementalFrameGen {
+public:
+    IncrementalFrameGen(const packet::FramingConfig& fr, std::vector<TagField> fields);
+
+    // 推进一个周期，返回本周期应发送的帧（字段序即为 TLV 帧序）
+    std::vector<std::vector<uint8_t>> nextFrames();
+
+private:
+    std::vector<uint8_t> nextFieldBytes(const TagField& f, size_t idx);
+
+    packet::FramingConfig fr_;
+    std::vector<TagField> fields_;
+    std::vector<uint64_t> counters_; // 每字段周期计数（递增状态）
+};
+
 } // namespace pv
