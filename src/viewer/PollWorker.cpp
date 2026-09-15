@@ -174,8 +174,11 @@ void PollWorker::run() {
             }
         }
 
-        // 1.5) 帧数据源：转发原始帧给数据目的，再喂 UI 报文监视；顺带刷新统计快照
+        // 1.5) 帧数据源：readTags 驱动收包泵（标签集可为空——纯监视/转发工程），
+        // 转发原始帧给数据目的，再喂 UI 报文监视；顺带刷新统计快照
         if (frameSource_) {
+            auto results = frameSource_->readTags(tagPtrs); // 泵 + 标签值刷新（空集仅泵）
+            if (!results.empty()) pushResultLocked(std::move(results));
             {
                 std::lock_guard<std::mutex> g(statM_);
                 lastFrameTime_ = frameSource_->lastFrameTimeText();
@@ -198,8 +201,8 @@ void PollWorker::run() {
             }
         }
 
-        // 2) 轮询读取
-        if (!tagPtrs.empty()) {
+        // 2) 轮询读取（行协议数据源；帧数据源已在 1.5 随泵读取，其结果无 CommLost 语义）
+        if (!tagPtrs.empty() && !frameSource_) {
             auto results = ds->readTags(tagPtrs);
             bool anyCommLost = false;
             for (const auto& r : results)

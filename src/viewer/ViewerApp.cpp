@@ -98,9 +98,12 @@ void ViewerApp::saveRecentPath(const std::string& path) {
 }
 
 void ViewerApp::startPolling() {
-    if (!hasProject_ || project_.tags.all().empty()) return;
+    if (!hasProject_) return;
     // 数据源组件（传输）+ 关联协议配置组件（拆帧/字段）合成；无组件时回退旧工程设置
     project_.settings.frame = frameSettingsFromProject(project_);
+    // 无标签也可启动：纯监视/转发工程（只有数据源/协议/数据目的，未绑定显示组件）
+    // 仍需 worker 泵收包驱动报文监视与转发；仅无标签且无帧数据源（纯静态画面）才不启动
+    if (project_.tags.all().empty() && !project_.settings.frame.enabled) return;
     worker_.start(project_.settings, project_.tags.all());
 }
 

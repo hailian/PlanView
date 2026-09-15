@@ -11,6 +11,9 @@ add_executable(pv_tests
     test_AiProto.cpp
     test_Perf.cpp
     test_Components.cpp
+    test_PollWorker.cpp
+    # PollWorker 本体随测试目标编译（仅依赖 pv_base，不拉入 ViewerApp/ImGui）
+    ${CMAKE_SOURCE_DIR}/src/viewer/PollWorker.cpp
 )
 target_link_libraries(pv_tests PRIVATE pv_base)
 target_include_directories(pv_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
